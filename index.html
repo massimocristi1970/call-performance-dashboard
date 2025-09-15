@@ -1,3 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Call Performance Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    nav { background:#333; color:#fff; padding:10px; }
+    nav a { color:#fff; margin-right:15px; text-decoration:none; }
+    nav a.active { font-weight:bold; text-decoration:underline; }
+    main { padding:20px; }
+    .hidden { display:none; }
+    .panel { margin-bottom:20px; padding:15px; border:1px solid #ccc; border-radius:6px; background:#f9f9f9; }
+    .kpis { display:flex; gap:20px; }
+    .kpi { flex:1; background:#fff; padding:10px; border-radius:6px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+    .kpi .label { font-size:14px; color:#666; }
+    .kpi .value { font-size:20px; font-weight:bold; margin-top:5px; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { padding:8px; border:1px solid #ccc; text-align:left; }
+    th { background:#eee; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="#" class="nav-link active" data-page="inbound-calls">Inbound Calls</a>
+    <a href="#" class="nav-link" data-page="outbound-calls">Outbound Calls</a>
+    <a href="#" class="nav-link" data-page="first-contact-resolution">First Contact Resolution</a>
+  </nav>
+
+  <main>
+    <div id="inbound-calls-page" class="page">
+      <div id="inbound-calls-content"></div>
+    </div>
+    <div id="outbound-calls-page" class="page hidden">
+      <div id="outbound-calls-content"></div>
+    </div>
+    <div id="first-contact-resolution-page" class="page hidden">
+      <div id="first-contact-resolution-content"></div>
+    </div>
+  </main>
+
+  <!-- your script block goes here -->
+</body>
+</html>
+
+
 <script>
 /* -------------------- Data sources -------------------- */
 const dataSources = {
