@@ -6,82 +6,33 @@ const dataSources = {
   "first-contact-resolution":"shared-data/first_contact_resolution.csv"
 };
 
-const dateField = {
-  "inbound":"date",
-  "outbound":"date",
-  "fcr":"date"
-};
-
 const reportData = {};
 const charts = {};
 
 /* -------------------- Helpers -------------------- */
 function normalizeHeader(h){
-  return String(h||'')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g,'');
+  return String(h||'').trim().toLowerCase().replace(/\s+/g,'');
 }
+
 function cleanNumber(v){
   if (v == null) return 0;
   let s = String(v).trim().replace(/\u00A0/g,'').replace(/Â/g,'');
   if (!s) return 0;
-  if (/^\(.*\)$/.test(s)) { s = s.slice(1,-1).trim(); return -cleanNumber(s); }
+  let neg = false;
+  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1,-1).trim(); }
   if (/^\d{1,3}(\.\d{3})+,\d{2}$/.test(s)) {
     s = s.replace(/\./g,'').replace(',', '.');
   } else {
     s = s.replace(/[£€$,]/g,'');
   }
   const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? (neg ? -n : n) : 0;
 }
-function toDateSafe(v){
-  if (!v) return null;
-  if (v instanceof Date) return isNaN(v) ? null : v;
-  const s = String(v).trim();
-  if (/^\d+(\.\d+)?$/.test(s)){
-    const n = parseFloat(s);
-    if (n > 20000 && n < 60000){
-      const base = new Date(1899,11,30);
-      base.setDate(base.getDate() + Math.floor(n));
-      if (n%1) base.setTime(base.getTime() + ((n%1)*86400000));
-      return base;
-    }
-  }
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)){ const d=new Date(s); return isNaN(d)?null:d; }
-  const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (m){ const a=+m[1], b=+m[2], y=+m[3]<100?2000+ (+m[3]):+m[3];
-    if (a>12 && b<=12) return new Date(y,b-1,a);
-    if (b>12 && a<=12) return new Date(y,a-1,b);
-    return new Date(y,b-1,a);
-  }
-  const d=new Date(s); return isNaN(d)?null:d;
-}
-function weightedAverage(rows, valCol, weightCol){
-  let num=0,den=0;
-  rows.forEach(r=>{
-    const v=cleanNumber(r[valCol]);
-    const w=weightCol?cleanNumber(r[weightCol]):1;
-    if(w>0){ num+=v*w; den+=w; }
-  });
-  return den? num/den : 0;
-}
-function statusIsAbandoned(s){
-  const v = String(s||'').toLowerCase();
-  return v.includes('abandon') || v.includes('missed') || v.includes('noanswer');
-}
-function statusIsConnected(s){
-  const v = String(s||'').toLowerCase();
-  return v.includes('connect') || v.includes('answer') || v.includes('success');
-}
-function findCol(headers, candidates){
-  const set = new Set(headers.map(normalizeHeader));
-  for(const c of candidates){
-    const key = normalizeHeader(c);
-    if(set.has(key)) return headers.find(h=>normalizeHeader(h)===key);
-  }
-  return null;
-}
+
+function fmtNumber(n){ return cleanNumber(n).toLocaleString(); }
+function fmtMoney(n){ return "£"+(cleanNumber(n)).toLocaleString(undefined,{maximumFractionDigits:2}); }
+function sum(rows,key){ return rows.reduce((a,r)=>a+cleanNumber(r[key]),0); }
+function avg(rows,key){ const vals=rows.map(r=>cleanNumber(r[key])).filter(v=>v>0); return vals.length? vals.reduce((a,b)=>a+b,0)/vals.length : 0; }
 
 /* -------------------- CSV Parser -------------------- */
 function parseCSV(text){
@@ -102,135 +53,88 @@ function parseCSV(text){
     out.push(cur); return out;
   };
 
-  const headers = splitRow(rows[0]);
+  const headers = splitRow(rows[0]).map(normalizeHeader);
   const data = [];
   for(let i=1;i<rows.length;i++){
     const parts = splitRow(rows[i]);
     if(!parts.length) continue;
     const rec={};
-    headers.forEach((h,idx)=> rec[h.trim()]=(parts[idx]??'').trim().replace(/\uFFFD/g,''));
+    headers.forEach((h,idx)=> rec[h]=(parts[idx]??'').trim().replace(/\uFFFD/g,''));
     if(Object.values(rec).some(v=>String(v).trim()!=='')) data.push(rec);
   }
   return data;
 }
 
-/* -------------------- Charts -------------------- */
-function destroyChart(id){ if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
-function lineByMonth(id,rows,df,label,color){
-  const agg={};
-  rows.forEach(r=>{
-    const d=toDateSafe(r[dateField[label.toLowerCase()] || 'date']); if(!d) return;
-    const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    agg[k]=(agg[k]||0)+1;
-  });
-  const labels=Object.keys(agg).sort();
-  const values=labels.map(k=>agg[k]);
-  destroyChart(id);
-  charts[id]=new Chart(document.getElementById(id),{
-    type:'line',
-    data:{labels,datasets:[{label,data:values,borderColor:color,backgroundColor:color,tension:.2}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true}}}
-  });
-}
-function barByCategory(id,rows,cat,label,color){
-  const sums={};
-  rows.forEach(r=>{
-    const k=r[cat]||'Unknown';
-    sums[k]=(sums[k]||0)+1;
-  });
-  const labels=Object.keys(sums).sort();
-  const values=labels.map(k=>sums[k]);
-  destroyChart(id);
-  charts[id]=new Chart(document.getElementById(id),{
-    type:'bar',
-    data:{labels,datasets:[{label,data:values,backgroundColor:color}]},
-    options:{responsive:true,scales:{y:{beginAtZero:true}}}
-  });
+/* -------------------- Tables -------------------- */
+function renderTable(rows,maxRows=50){
+  if(!rows.length)return '';
+  const headers=Object.keys(rows[0]);
+  const head=`<thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>`;
+  const body=`<tbody>${rows.slice(0,maxRows).map(r=>`<tr>${headers.map(h=>`<td>${r[h]??''}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  return `<div class="table-wrap"><table>${head}${body}</table></div>`;
 }
 
 /* -------------------- Renderers -------------------- */
-function renderInbound(){
-  const rep='inbound';
-  const target=document.getElementById(`${rep}-content`);
-  const rows=reportData[rep]||[];
-  if(!rows.length){target.innerHTML=`<div class="panel">No data.</div>`;return;}
-  const headers=Object.keys(rows[0]);
-  const countCol=findCol(headers,['count','calls']);
-  const statusCol=findCol(headers,['status','disposition','outcome']);
-  const durCol=findCol(headers,['duration','talktime']);
-  const totalCalls=countCol? rows.reduce((a,r)=>a+cleanNumber(r[countCol]),0):rows.length;
-  let abandoned=0;
-  rows.forEach(r=>{
-    const w=countCol?cleanNumber(r[countCol]):1;
-    if(statusIsAbandoned(r[statusCol])) abandoned+=w;
-  });
-  const abandonPct=totalCalls?(abandoned/totalCalls*100):0;
-  const avgDur=durCol?weightedAverage(rows,durCol,countCol):0;
-  const kpi=`<div class="panel"><div class="kpis">
-      <div class="kpi"><div class="label">Total Calls</div><div class="value">${totalCalls}</div></div>
-      <div class="kpi"><div class="label">Abandon %</div><div class="value">${abandonPct.toFixed(1)}%</div></div>
-      <div class="kpi"><div class="label">Avg Duration</div><div class="value">${avgDur.toFixed(1)}s</div></div>
-    </div></div>`;
-  const lineId='in-line', barId='in-bar';
-  const chartsHTML=`<div class="charts">
-      <div class="chart-card"><h3>Inbound Calls Over Time</h3><canvas id="${lineId}"></canvas></div>
-      <div class="chart-card"><h3>By Status</h3><canvas id="${barId}"></canvas></div>
-    </div>`;
-  target.innerHTML=kpi+chartsHTML;
-  lineByMonth(lineId,rows,rep,'Inbound','#3b82f6');
-  barByCategory(barId,rows,statusCol,'Inbound','#f59e0b');
-}
-function renderOutbound(){
-  const rep='outbound';
-  const target=document.getElementById(`${rep}-content`);
-  const rows=reportData[rep]||[];
-  if(!rows.length){target.innerHTML=`<div class="panel">No data.</div>`;return;}
-  const headers=Object.keys(rows[0]);
-  const countCol=findCol(headers,['count','calls']);
-  const statusCol=findCol(headers,['status','disposition','outcome']);
-  const totalCalls=countCol? rows.reduce((a,r)=>a+cleanNumber(r[countCol]),0):rows.length;
-  let connected=0;
-  rows.forEach(r=>{
-    const w=countCol?cleanNumber(r[countCol]):1;
-    if(statusIsConnected(r[statusCol])) connected+=w;
-  });
-  const connectPct=totalCalls?(connected/totalCalls*100):0;
-  const kpi=`<div class="panel"><div class="kpis">
-      <div class="kpi"><div class="label">Total Outbound</div><div class="value">${totalCalls}</div></div>
-      <div class="kpi"><div class="label">Connect %</div><div class="value">${connectPct.toFixed(1)}%</div></div>
-    </div></div>`;
-  const lineId='out-line', barId='out-bar';
-  const chartsHTML=`<div class="charts">
-      <div class="chart-card"><h3>Outbound Calls Over Time</h3><canvas id="${lineId}"></canvas></div>
-      <div class="chart-card"><h3>By Outcome</h3><canvas id="${barId}"></canvas></div>
-    </div>`;
-  target.innerHTML=kpi+chartsHTML;
-  lineByMonth(lineId,rows,rep,'Outbound','#3b82f6');
-  barByCategory(barId,rows,statusCol,'Outbound','#10b981');
-}
-function renderFCR(){
-  const rep='fcr';
-  const target=document.getElementById(`${rep}-content`);
-  const rows=reportData[rep]||[];
-  if(!rows.length){target.innerHTML=`<div class="panel">No data.</div>`;return;}
-  const headers=Object.keys(rows[0]);
-  const countCol=findCol(headers,['count','calls']);
-  const resolvedCol=findCol(headers,['resolved','fcr','firstcontactresolution','outcome']);
-  const totalCases=countCol? rows.reduce((a,r)=>a+cleanNumber(r[countCol]),0):rows.length;
-  let resolved=0;
-  rows.forEach(r=>{
-    const w=countCol?cleanNumber(r[countCol]):1;
-    if(String(r[resolvedCol]||'').toLowerCase().includes('yes')) resolved+=w;
-  });
-  const fcrPct=totalCases?(resolved/totalCases*100):0;
-  const kpi=`<div class="panel"><div class="kpis">
-      <div class="kpi"><div class="label">Total Cases</div><div class="value">${totalCases}</div></div>
-      <div class="kpi"><div class="label">FCR %</div><div class="value">${fcrPct.toFixed(1)}%</div></div>
-    </div></div>`;
-  target.innerHTML=kpi;
+function renderInboundReport(){
+  const report='inbound-calls';
+  const target=document.getElementById(`${report}-content`);
+  const rows=reportData[report]||[];
+  if(!rows.length){ target.innerHTML = `<div class="panel">No inbound calls data.</div>`; return; }
+
+  const total=sum(rows,'count');
+  const avgHandle=avg(rows,'handletime');
+
+  const kpiHTML = `
+    <div class="panel"><div class="kpis">
+      <div class="kpi"><div class="label">Total Calls</div><div class="value">${fmtNumber(total)}</div></div>
+      <div class="kpi"><div class="label">Avg Handle Time</div><div class="value">${avgHandle.toFixed(1)} mins</div></div>
+    </div></div>
+  `;
+
+  target.innerHTML = kpiHTML + `<div class="panel">${renderTable(rows)}</div>`;
 }
 
-/* -------------------- Nav + Load -------------------- */
+function renderOutboundReport(){
+  const report='outbound-calls';
+  const target=document.getElementById(`${report}-content`);
+  const rows=reportData[report]||[];
+  if(!rows.length){ target.innerHTML = `<div class="panel">No outbound calls data.</div>`; return; }
+
+  const total=sum(rows,'count');
+  const avgDur=avg(rows,'duration');
+
+  const kpiHTML = `
+    <div class="panel"><div class="kpis">
+      <div class="kpi"><div class="label">Total Calls</div><div class="value">${fmtNumber(total)}</div></div>
+      <div class="kpi"><div class="label">Avg Duration</div><div class="value">${avgDur.toFixed(1)} mins</div></div>
+    </div></div>
+  `;
+
+  target.innerHTML = kpiHTML + `<div class="panel">${renderTable(rows)}</div>`;
+}
+
+function renderFCRReport(){
+  const report='first-contact-resolution';
+  const target=document.getElementById(`${report}-content`);
+  const rows=reportData[report]||[];
+  if(!rows.length){ target.innerHTML = `<div class="panel">No FCR data.</div>`; return; }
+
+  const total=rows.length;
+  const resolved = rows.filter(r=>String(r['resolved']).toLowerCase()==='yes').length;
+  const fcrRate = total ? (resolved/total*100) : 0;
+
+  const kpiHTML = `
+    <div class="panel"><div class="kpis">
+      <div class="kpi"><div class="label">Total Cases</div><div class="value">${fmtNumber(total)}</div></div>
+      <div class="kpi"><div class="label">Resolved First Contact</div><div class="value">${fmtNumber(resolved)}</div></div>
+      <div class="kpi"><div class="label">FCR Rate</div><div class="value">${fcrRate.toFixed(1)}%</div></div>
+    </div></div>
+  `;
+
+  target.innerHTML = kpiHTML + `<div class="panel">${renderTable(rows)}</div>`;
+}
+
+/* -------------------- Navigation -------------------- */
 document.querySelectorAll('.nav-link').forEach(link=>{
   link.addEventListener('click',e=>{
     e.preventDefault();
@@ -239,28 +143,31 @@ document.querySelectorAll('.nav-link').forEach(link=>{
     link.classList.add('active');
     document.querySelectorAll('main .page').forEach(p=>p.classList.add('hidden'));
     document.getElementById(`${page}-page`).classList.remove('hidden');
-    if(page==='inbound'){ renderInbound(); }
-    else if(page==='outbound'){ renderOutbound(); }
-    else if(page==='fcr'){ renderFCR(); }
+
+    if(page==='inbound-calls'){ renderInboundReport(); }
+    else if(page==='outbound-calls'){ renderOutboundReport(); }
+    else if(page==='first-contact-resolution'){ renderFCRReport(); }
   });
 });
 
+/* -------------------- Load all data -------------------- */
 async function loadAll(){
   for(const [rep,url] of Object.entries(dataSources)){
     try{
       const res = await fetch(url);
       const txt = await res.text();
       reportData[rep] = parseCSV(txt);
+      console.log(`Loaded ${reportData[rep].length} rows for ${rep}`);
     }catch(err){
-      console.error('Load error',rep,err);
-      reportData[rep]=[];
+      console.error('Load error', rep, err);
+      reportData[rep] = [];
     }
   }
 }
 
 document.addEventListener('DOMContentLoaded', async ()=>{
   await loadAll();
-  const first=document.querySelector('.nav-link[data-page="inbound"]');
+  const first=document.querySelector('.nav-link[data-page="inbound-calls"]');
   if(first) first.click();
 });
 </script>
