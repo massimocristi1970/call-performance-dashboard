@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Call Performance 2025 Dashboard</title>
+
+  <!-- Icons & fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Chart.js & SheetJS (XLSX) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.2/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0f172a;          /* slate-900 */
+      --card:#111827;        /* gray-900 */
+      --muted:#94a3b8;       /* slate-400 */
+      --text:#e5e7eb;        /* gray-200 */
+      --accent:#60a5fa;      /* blue-400 */
+      --accent2:#34d399;     /* emerald-400 */
+      --warn:#f59e0b;        /* amber-500 */
+      --danger:#ef4444;      /* red-500 */
+      --border:#1f2937;      /* gray-800 */
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif}
+    a{color:inherit;text-decoration:none}
+    .app{display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+    .sidebar{background:#0b1222;border-right:1px solid var(--border);padding:20px}
+    .brand{font-weight:700;font-size:20px;letter-spacing:.2px;margin-bottom:20px}
+    .nav a{display:block;padding:10px 12px;margin:6px 0;border-radius:10px;color:var(--muted);border:1px solid transparent}
+    .nav a.active,.nav a:hover{color:var(--text);background:rgba(255,255,255,.04);border-color:var(--border)}
+    .main{padding:24px}
+    .header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+    .header h1{font-size:22px;margin:0}
+    .grid{display:grid;gap:16px}
+    @media(min-width:1024px){ .grid.cols-4{grid-template-columns:repeat(4,1fr)} .grid.cols-3{grid-template-columns:repeat(3,1fr)} }
+    @media(max-width:1023px){ .grid.cols-4,.grid.cols-3{grid-template-columns:repeat(1,1fr)} }
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px}
+    .muted{color:var(--muted)}
+    .kpi{display:flex;flex-direction:column;gap:6px}
+    .kpi .label{color:var(--muted);font-size:12px}
+    .kpi .value{font-size:22px;font-weight:700}
+    .filters{display:flex;flex-wrap:wrap;gap:12px;margin:8px 0 4px}
+    .filters > div{display:flex;flex-direction:column;gap:6px}
+    select,button{background:#0b1222;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
+    button.btn{cursor:pointer}
+    button.btn-outline{background:transparent}
+    .charts{display:grid;gap:16px}
+    @media(min-width:1024px){ .charts{grid-template-columns:1fr 1fr} }
+    canvas{width:100%;height:320px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text)}
+    th{color:var(--muted);text-align:left}
+    .heatmap{width:100%;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .heatmap table{width:100%}
+    .badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;border:1px solid var(--border);color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">📞 Call Performance 2025</div>
+      <div class="nav">
+        <a href="#" data-page="overview" class="active">Overview</a>
+        <a href="#" data-page="calls">Calls</a>
+        <a href="#" data-page="agents">Agents</a>
+        <a href="#" data-page="dispositions">Dispositions</a>
+        <a href="#" data-page="heatmap">Volume Heatmap</a>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="muted" style="font-size:12px;line-height:1.5">
+          Data source: <span class="badge">shared-data/Call_Performance_2025.xlsx</span><br/>
+          Sheet auto-detected (first sheet with rows).
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="header">
+        <h1 id="page-title">Overview</h1>
+        <div class="muted" id="data-info"></div>
+      </div>
+
+      <!-- Filters -->
+      <div class="card" id="filters-card">
+        <div class="filters" id="filters"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn" id="reset-filters">Reset filters</button>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="grid cols-4" id="kpi-grid">
+        <div class="card kpi"><div class="label">Total Calls</div><div class="value" id="kpi-total">0</div></div>
+        <div class="card kpi"><div class="label">Answer Rate</div><div class="value" id="kpi-answer">0%</div></div>
+        <div class="card kpi"><div class="label">Avg Talk Time</div><div class="value" id="kpi-aht">0:00</div></div>
+        <div class="card kpi"><div class="label">Avg Speed of Answer</div><div class="value" id="kpi-asa">0s</div></div>
+        <div class="card kpi"><div class="label">Abandon Rate</div><div class="value" id="kpi-abandon">0%</div></div>
+        <div class="card kpi"><div class="label">Service Level (≤ 20s)</div><div class="value" id="kpi-sla">0%</div></div>
+      </div>
+
+      <!-- Charts area -->
+      <div id="page-overview" class="page">
+        <div class="charts">
+          <div class="card">
+            <h3 class="muted">Calls by Day</h3>
+            <canvas id="chart-calls-line"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="muted">Answered vs Abandoned (Daily)</h3>
+            <canvas id="chart-answer-stacked"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="muted">Dispositions</h3>
+            <canvas id="chart-dispo-pie"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="muted">Agent Leaderboard (Calls)</h3>
+            <canvas id="chart-agent-bar"></canvas>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="muted" style="margin-bottom:10px">Sample (first 100 rows)</div>
+          <div id="table-sample"></div>
+        </div>
+      </div>
+
+      <div id="page-calls" class="page" style="display:none">
+        <div class="charts">
+          <div class="card">
+            <h3 class="muted">Calls by Day</h3>
+            <canvas id="chart-calls-line-2"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="muted">Calls by Hour (0–23)</h3>
+            <canvas id="chart-by-hour"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="page-agents" class="page" style="display:none">
+        <div class="charts">
+          <div class="card">
+            <h3 class="muted">Agent Leaderboard (Calls)</h3>
+            <canvas id="chart-agent-bar-2"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="muted">Agent AHT (mins)</h3>
+            <canvas id="chart-agent-aht"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="page-dispositions" class="page" style="display:none">
+        <div class="charts">
+          <div class="card">
+            <h3 class="muted">Disposition Breakdown</h3>
+            <canvas id="chart-dispo-pie-2"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="muted">Disposition by Day</h3>
+            <canvas id="chart-dispo-byday"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="page-heatmap" class="page" style="display:none">
+        <div class="card heatmap">
+          <h3 class="muted">Calls Heatmap (Day of Week × Hour)</h3>
+          <div id="heatmap-table" style="overflow:auto"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    /***********************
+     * Config & Globals
+     ***********************/
+    const DATA_PATH = "shared-data/Call_Performance_2025.xlsx"; // Update if filename differs
+    const charts = {}; // keep Chart.js instances to destroy/rebuild
+    let ALL_ROWS = [];
+    let FILTERS = { years:[], months:[], agents:[], dispositions:[] };
+
+    // Column alias map (normalized lowercased nospace header -> semantic key)
+    const COL_ALIASES = {
+      // timestamps
+      datetime: ["datetime","date","date_time","callstart","starttime","start","created","timestamp"],
+      answeredtime: ["answered","answertime","answereddatetime","answer_time","connecttime","answeredtimestamp"],
+      endtime: ["endtime","ended","calldisconnect","hangup","end"],
+      // agent / caller / disposition
+      agent: ["agent","agentname","user","owner","handler","rep","advisor"],
+      disposition: ["disposition","outcome","result","status","callresult"],
+      fromnumber: ["from","caller","fromnumber","ani","cli","phone"],
+      // durations (seconds)
+      talktime: ["talktime","talk_time","duration","handletime","aht","ttotal","talksecs"],
+      waittime: ["wait","queue","queuetime","asa","ringtime","holdtime","waittime","ivrwait","routingwait"],
+      // SLA threshold seconds (if present per row, else use 20s)
+      slathreshold: ["slathreshold","slatarget","sla_sec","sla"],
+    };
+
+    /***********************
+     * Utility helpers
+     ***********************/
+    const norm = s => String(s??"").trim().toLowerCase().replace(/\s+/g,"");
+
+    function mapHeaders(row0){
+      const map = {};
+      const keys = Object.keys(row0 || {});
+      keys.forEach(k=>{
+        const n = norm(k);
+        map[n] = k; // original header
+      });
+      // find the first available match for each semantic
+      function pick(aliasList){
+        for(const a of aliasList){
+          if(map[a] !== undefined) return map[a];
+        }
+        return null;
+      }
+      return {
+        datetime: pick(COL_ALIASES.datetime),
+        answeredtime: pick(COL_ALIASES.answeredtime),
+        endtime: pick(COL_ALIASES.endtime),
+        agent: pick(COL_ALIASES.agent),
+        disposition: pick(COL_ALIASES.disposition),
+        fromnumber: pick(COL_ALIASES.fromnumber),
+        talktime: pick(COL_ALIASES.talktime),
+        waittime: pick(COL_ALIASES.waittime),
+        slathreshold: pick(COL_ALIASES.slathreshold),
+      };
+    }
+
+    function parseExcelDate(v){
+      if (v == null || v === "") return null;
+      if (v instanceof Date) return isNaN(v) ? null : v;
+
+      // Excel serial date (possibly fraction for time)
+      if (/^\d+(\.\d+)?$/.test(String(v))) {
+        const n = parseFloat(v);
+        if (n > 20000 && n < 60000) {
+          const base = new Date(1899, 11, 30);
+          base.setDate(base.getDate() + Math.floor(n));
+          if (n % 1) base.setTime(base.getTime() + ((n % 1) * 86400000));
+          return base;
+        }
+      }
+      // ISO or general parse
+      const d = new Date(v);
+      return isNaN(d) ? null : d;
+    }
+
+    function sec(n){
+      const x = Number(n);
+      if (!Number.isFinite(x)) return 0;
+      return Math.max(0, x);
+    }
+    function cleanNumber(v){
+      if (v == null) return 0;
+      let s = String(v).trim().replace(/\u00A0/g,'').replace(/Â/g,'');
+      if (!s) return 0;
+      let neg=false;
+      if (/^\(.*\)$/.test(s)){ neg=true; s = s.slice(1,-1).trim(); }
+      if (/^\d{1,3}(\.\d{3})+,\d{2}$/.test(s)) s = s.replace(/\./g,'').replace(',', '.');
+      else s = s.replace(/[£€$,]/g,'');
+      const n = parseFloat(s);
+      return Number.isFinite(n) ? (neg ? -n : n) : 0;
+    }
+    function fmtMoney(n){
+      const v = Number(n)||0;
+      return "£" + v.toLocaleString(undefined,{maximumFractionDigits:2});
+    }
+    function fmtTime(seconds){
+      const s = Math.round(Math.max(0, seconds||0));
+      const m = Math.floor(s/60);
+      const r = s%60;
+      return `${m}:${String(r).padStart(2,'0')}`;
+    }
+
+    function sum(rows, key){
+      return rows.reduce((a,r)=>a + (Number(r[key])||0), 0);
+    }
+    function avg(rows, key){
+      if (!rows.length) return 0;
+      return sum(rows, key) / rows.length;
+    }
+
+    /***********************
+     * Data loading
+     ***********************/
+    async function loadWorkbook(){
+      const res = await fetch(DATA_PATH);
+      const ab = await res.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(ab), {type:'array'});
+      // pick the first non-empty sheet
+      const sheetName = wb.SheetNames.find(n=>{
+        const ws = wb.Sheets[n];
+        const range = XLSX.utils.decode_range(ws['!ref'] || "A1:A1");
+        return (range.e.r > 0); // more than header
+      }) || wb.SheetNames[0];
+
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:"", raw:false}); // get objects by headers
+
+      return rows;
+    }
+
+    function normalizeRows(raw){
+      if (!raw.length) return [];
+      const headersMap = mapHeaders(raw[0]);
+
+      return raw.map(r=>{
+        const dt   = parseExcelDate(r[headersMap.datetime]);
+        const ans  = headersMap.answeredtime ? parseExcelDate(r[headersMap.answeredtime]) : null;
+        const end  = headersMap.endtime ? parseExcelDate(r[headersMap.endtime]) : null;
+
+        const talk = headersMap.talktime ? sec(cleanNumber(r[headersMap.talktime])) : (
+          // fallback: if we have end & ans, estimate talk
+          (ans && end) ? Math.max(0, (end - ans)/1000) : 0
+        );
+        const wait = headersMap.waittime ? sec(cleanNumber(r[headersMap.waittime])) : (
+          (dt && ans) ? Math.max(0, (ans - dt)/1000) : 0
+        );
+
+        const agent = headersMap.agent ? String(r[headersMap.agent]).trim() : "";
+        const dispo = headersMap.disposition ? String(r[headersMap.disposition]).trim() : "";
+        const from  = headersMap.fromnumber ? String(r[headersMap.fromnumber]).trim() : "";
+        const slaT  = headersMap.slathreshold ? sec(cleanNumber(r[headersMap.slathreshold])) : 20; // default 20s
+
+        const answered = !!ans || talk > 0 || /answer/i.test(dispo);
+        const abandoned = !answered; // simple assumption: not answered => abandoned
+
+        return {
+          datetime: dt,
+          answeredtime: ans,
+          endtime: end,
+          agent,
+          disposition: dispo,
+          fromnumber: from,
+          talktime: talk,
+          waittime: wait,
+          slathreshold: slaT,
+          answered,
+          abandoned
+        };
+      }).filter(r=>r.datetime); // keep rows with a valid start datetime
+    }
+
+    /***********************
+     * Filters UI
+     ***********************/
+    function buildFilters(rows){
+      const years = new Set();
+      const months = new Set();
+      const agents = new Set();
+      const dispos = new Set();
+
+      rows.forEach(r=>{
+        years.add(r.datetime.getFullYear());
+        months.add(r.datetime.getMonth()+1);
+        if (r.agent) agents.add(r.agent);
+        if (r.disposition) dispos.add(r.disposition);
+      });
+
+      const yList = Array.from(years).sort((a,b)=>a-b);
+      const mList = Array.from(months).sort((a,b)=>a-b);
+      const aList = Array.from(agents).sort((a,b)=> String(a).localeCompare(String(b), undefined, {numeric:true}));
+      const dList = Array.from(dispos).sort((a,b)=> String(a).localeCompare(String(b), undefined, {numeric:true}));
+
+      const wrap = document.getElementById("filters");
+      wrap.innerHTML = "";
+
+      function mkMulti(id,label,values,formatter=(x)=>x){
+        const box = document.createElement("div");
+        box.innerHTML = `
+          <label class="muted" for="${id}">${label}</label>
+          <select id="${id}" multiple>
+            ${values.map(v=>`<option value="${v}">${formatter(v)}</option>`).join('')}
+          </select>`;
+        wrap.appendChild(box);
+        return box.querySelector("select");
+      }
+
+      const ySel = mkMulti("f-year","Year",yList,String);
+      const mSel = mkMulti("f-month","Month",mList,v=>String(v).padStart(2,'0'));
+      const aSel = mkMulti("f-agent","Agent",aList,String);
+      const dSel = mkMulti("f-dispo","Disposition",dList,String);
+
+      const onChange = ()=> renderCurrentPage();
+      [ySel,mSel,aSel,dSel].forEach(sel=> sel.addEventListener("change", onChange));
+
+      // Reset
+      document.getElementById("reset-filters").onclick = ()=>{
+        [ySel,mSel,aSel,dSel].forEach(sel=>{
+          Array.from(sel.options).forEach(o=>o.selected=false);
+        });
+        renderCurrentPage();
+      };
+    }
+
+    function applyFilters(rows){
+      const ySel = Array.from(document.getElementById("f-year")?.selectedOptions||[]).map(o=>o.value);
+      const mSel = Array.from(document.getElementById("f-month")?.selectedOptions||[]).map(o=>o.value);
+      const aSel = Array.from(document.getElementById("f-agent")?.selectedOptions||[]).map(o=>o.value);
+      const dSel = Array.from(document.getElementById("f-dispo")?.selectedOptions||[]).map(o=>o.value);
+
+      return rows.filter(r=>{
+        const y = String(r.datetime.getFullYear());
+        const m = String(r.datetime.getMonth()+1).padStart(2,'0');
+        if (ySel.length && !ySel.includes(y)) return false;
+        if (mSel.length && !mSel.includes(m)) return false;
+        if (aSel.length && !aSel.includes(r.agent||"")) return false;
+        if (dSel.length && !dSel.includes(r.disposition||"")) return false;
+        return true;
+      });
+    }
+
+    /***********************
+     * KPIs
+     ***********************/
+    function renderKPIs(rows){
+      const total = rows.length;
+      const answered = rows.filter(r=>r.answered).length;
+      const answerRate = total ? (answered/total*100) : 0;
+
+      const aht = avg(rows, "talktime");
+      const asa = avg(rows, "waittime");
+
+      const abandoned = rows.filter(r=>r.abandoned).length;
+      const abandonRate = total ? (abandoned/total*100) : 0;
+
+      // SLA <= 20s (or row-specific threshold if provided)
+      const slaHits = rows.filter(r=> r.answered && r.waittime <= (r.slathreshold || 20)).length;
+      const slaPct = answered ? (slaHits/answered*100) : 0;
+
+      document.getElementById("kpi-total").textContent = total.toLocaleString();
+      document.getElementById("kpi-answer").textContent = `${answerRate.toFixed(1)}%`;
+      document.getElementById("kpi-aht").textContent = fmtTime(aht);
+      document.getElementById("kpi-asa").textContent = `${Math.round(asa)}s`;
+      document.getElementById("kpi-abandon").textContent = `${abandonRate.toFixed(1)}%`;
+      document.getElementById("kpi-sla").textContent = `${slaPct.toFixed(1)}%`;
+    }
+
+    /***********************
+     * Charts
+     ***********************/
+    function destroy(id){ if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
+
+    function chartCallsByDay(id, rows){
+      const agg = {};
+      rows.forEach(r=>{
+        const k = r.datetime.toISOString().slice(0,10);
+        agg[k] = (agg[k]||0) + 1;
+      });
+      const labels = Object.keys(agg).sort();
+      const data = labels.map(k=>agg[k]);
+
+      destroy(id);
+      charts[id] = new Chart(document.getElementById(id), {
+        type:'line',
+        data:{ labels, datasets:[{label:'Calls', data, borderColor:'#60a5fa', backgroundColor:'#60a5fa', tension:.2}] },
+        options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+      });
+    }
+
+    function chartAnswerStacked(id, rows){
+      const agg = {};
+      rows.forEach(r=>{
+        const k = r.datetime.toISOString().slice(0,10);
+        if(!agg[k]) agg[k] = {answered:0, abandoned:0};
+        if(r.answered) agg[k].answered += 1;
+        else agg[k].abandoned += 1;
+      });
+      const labels = Object.keys(agg).sort();
+      const a = labels.map(k=>agg[k].answered);
+      const b = labels.map(k=>agg[k].abandoned);
+
+      destroy(id);
+      charts[id] = new Chart(document.getElementById(id), {
+        type:'bar',
+        data:{
+          labels,
+          datasets:[
+            {label:'Answered', data:a, backgroundColor:'#34d399', stack:'s'},
+            {label:'Abandoned', data:b, backgroundColor:'#ef4444', stack:'s'}
+          ]
+        },
+        options:{ responsive:true, scales:{ x:{stacked:true}, y:{stacked:true, beginAtZero:true} } }
+      });
+    }
+
+    function chartDispositionPie(id, rows){
+      const counts = {};
+      rows.forEach(r=>{
+        const k = r.disposition || "Unknown";
+        counts[k] = (counts[k]||0) + 1;
+      });
+      const labels = Object.keys(counts);
+      const data = labels.map(k=>counts[k]);
+
+      destroy(id);
+      charts[id] = new Chart(document.getElementById(id), {
+        type:'pie',
+        data:{ labels, datasets:[{ data, backgroundColor:['#60a5fa','#34d399','#f59e0b','#ef4444','#a78bfa','#f472b6','#22d3ee'] }] },
+        options:{ responsive:true }
+      });
+    }
+
+    function chartAgentBar(id, rows){
+      const counts = {};
+      rows.forEach(r=>{
+        const k = r.agent || "Unknown";
+        counts[k] = (counts[k]||0) + 1;
+      });
+      const labels = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).slice(0,20);
+      const data = labels.map(k=>counts[k]);
+
+      destroy(id);
+      charts[id] = new Chart(document.getElementById(id), {
+        type:'bar',
+        data:{ labels, datasets:[{label:'Calls', data, backgroundColor:'#60a5fa'}] },
+        options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+      });
+    }
+
+    function chartByHour(id, rows){
+      const hours = new Array(24).fill(0);
+      rows.forEach(r=>{
+        hours[r.datetime.getHours()]++;
+      });
+      destroy(id);
+      charts[id] = new Chart(document.getElementById(id), {
+        type:'bar',
+        data:{ labels:hours.map((_,i)=>String(i).padStart(2,'0')), datasets:[{label:'Calls', data:hours, backgroundColor:'#34d399'}] },
+        options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+      });
+    }
+
+    function chartAgentAHT(id, rows){
+      const sums = {}, counts = {};
+      rows.forEach(r=>{
+        const k = r.agent || "Unknown";
+        sums[k] = (sums[k]||0) + (r.talktime||0);
+        counts[k] = (counts[k]||0) + 1;
+      });
+      const labels = Object.keys(sums);
+      const data = labels.map(k=> (counts[k] ? (sums[k]/counts[k]/60) : 0)); // minutes
+
+      // show top 20 by calls
+      labels.sort((a,b)=>counts[b] - counts[a]);
+      const top = labels.slice(0,20);
+      const d = top.map(k=> (counts[k] ? (sums[k]/counts[k]/60) : 0));
+
+      destroy(id);
+      charts[id] = new Chart(document.getElementById(id), {
+        type:'bar',
+        data:{ labels:top, datasets:[{label:'AHT (mins)', data:d, backgroundColor:'#f59e0b'}] },
+        options:{ responsive:true, scales:{ y:{ beginAtZero:true } } }
+      });
+    }
+
+    function chartDispositionByDay(id, rows){
+      // stacked area by disposition (converted to stacked bars for clarity)
+      const days = {};
+      const dispoSet = new Set();
+      rows.forEach(r=>{
+        const d = r.datetime.toISOString().slice(0,10);
+        const disp = r.disposition || "Unknown";
+        dispoSet.add(disp);
+        if(!days[d]) days[d] = {};
+        days[d][disp] = (days[d][disp]||0)+1;
+      });
+
+      const labels = Object.keys(days).sort();
+      const dispos = Array.from(dispoSet);
+      const datasets = dispos.map((disp,i)=>({
+        label: disp,
+        data: labels.map(d=>days[d][disp]||0),
+        backgroundColor: ['#60a5fa','#34d399','#f59e0b','#ef4444','#a78bfa','#f472b6','#22d3ee'][i % 7],
+        stack: 'd'
+      }));
+
+      destroy(id);
+      charts[id] = new Chart(document.getElementById(id), {
+        type:'bar',
+        data:{ labels, datasets },
+        options:{ responsive:true, scales:{ x:{stacked:true}, y:{stacked:true, beginAtZero:true} } }
+      });
+    }
+
+    function renderHeatmap(rows){
+      // DayOfWeek (Mon..Sun) × Hour (0..23)
+      const grid = [...Array(7)].map(()=> new Array(24).fill(0));
+      rows.forEach(r=>{
+        const dow = (r.datetime.getDay() + 6) % 7; // make Monday=0
+        const hr = r.datetime.getHours();
+        grid[dow][hr] += 1;
+      });
+      const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+      const max = grid.reduce((m,row)=> Math.max(m, ...row), 0) || 1;
+      const table = ['<table><thead><tr><th></th>',
+        ...[...Array(24)].map((_,h)=> `<th>${String(h).padStart(2,'0')}</th>`),
+        '</tr></thead><tbody>'].join('');
+
+      let rowsHtml = "";
+      for(let d=0; d<7; d++){
+        rowsHtml += `<tr><th>${days[d]}</th>`;
+        for(let h=0; h<24; h++){
+          const v = grid[d][h];
+          const alpha = v ? (0.1 + 0.9 * (v / max)) : 0;
+          rowsHtml += `<td style="background: rgba(96,165,250,${alpha}); text-align:center">${v||""}</td>`;
+        }
+        rowsHtml += `</tr>`;
+      }
+      const html = table + rowsHtml + '</tbody></table>';
+      document.getElementById("heatmap-table").innerHTML = html;
+    }
+
+    /***********************
+     * Pages render
+     ***********************/
+    function renderOverview(rows){
+      chartCallsByDay("chart-calls-line", rows);
+      chartAnswerStacked("chart-answer-stacked", rows);
+      chartDispositionPie("chart-dispo-pie", rows);
+      chartAgentBar("chart-agent-bar", rows);
+      // sample table
+      document.getElementById("table-sample").innerHTML = renderTable(rows.slice(0,100));
+    }
+
+    function renderCalls(rows){
+      chartCallsByDay("chart-calls-line-2", rows);
+      chartByHour("chart-by-hour", rows);
+    }
+
+    function renderAgents(rows){
+      chartAgentBar("chart-agent-bar-2", rows);
+      chartAgentAHT("chart-agent-aht", rows);
+    }
+
+    function renderDispositions(rows){
+      chartDispositionPie("chart-dispo-pie-2", rows);
+      chartDispositionByDay("chart-dispo-byday", rows);
+    }
+
+    function renderTable(rows){
+      if(!rows.length) return "<div class='muted'>No rows</div>";
+      const headers = Object.keys(rows[0]);
+      const head = `<thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>`;
+      const body = `<tbody>${rows.map(r=>`<tr>${headers.map(h=>`<td>${r[h] instanceof Date ? r[h].toLocaleString() : r[h]}</td>`).join('')}</tr>`).join('')}</tbody>`;
+      return `<div style="overflow:auto"><table>${head}${body}</table></div>`;
+    }
+
+    function showPage(id){
+      document.querySelectorAll(".page").forEach(p=> p.style.display = "none");
+      document.getElementById("page-"+id).style.display = "";
+      document.getElementById("page-title").textContent = ({
+        overview:"Overview",
+        calls:"Calls",
+        agents:"Agents",
+        dispositions:"Dispositions",
+        heatmap:"Volume Heatmap"
+      })[id] || "Overview";
+    }
+
+    function renderCurrentPage(){
+      const rows = applyFilters(ALL_ROWS);
+      renderKPIs(rows);
+      const active = document.querySelector(".nav a.active")?.dataset.page || "overview";
+
+      if (active === "overview") renderOverview(rows);
+      else if (active === "calls") renderCalls(rows);
+      else if (active === "agents") renderAgents(rows);
+      else if (active === "dispositions") renderDispositions(rows);
+      else if (active === "heatmap") renderHeatmap(rows);
+    }
+
+    /***********************
+     * Boot
+     ***********************/
+    document.querySelectorAll(".nav a").forEach(a=>{
+      a.addEventListener("click", e=>{
+        e.preventDefault();
+        document.querySelectorAll(".nav a").forEach(x=>x.classList.remove("active"));
+        a.classList.add("active");
+        showPage(a.dataset.page);
+        renderCurrentPage();
+      });
+    });
+
+    (async function init(){
+      const raw = await loadWorkbook();
+      const normed = normalizeRows(raw);
+      ALL_ROWS = normed;
+      document.getElementById("data-info").textContent = `${ALL_ROWS.length.toLocaleString()} rows loaded`;
+      buildFilters(ALL_ROWS);
+      showPage("overview");
+      renderCurrentPage();
+    })();
+  </script>
+</body>
+</html>
