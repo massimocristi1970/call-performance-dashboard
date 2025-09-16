@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call Performance Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.9/dayjs.min.js"></script>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading dashboard data...</div>
+        <div class="loading-progress">
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <div id="progress-text" class="progress-text">0%</div>
+        </div>
+    </div>
+
+    <!-- Error Messages -->
+    <div id="error-container" class="error-container hidden">
+        <div class="error-message">
+            <span class="error-icon">⚠️</span>
+            <span id="error-text"></span>
+            <button id="error-close" class="error-close">×</button>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <h1>📞 Call Performance Dashboard</h1>
+        </div>
+        <div class="nav-links">
+            <a href="#" class="nav-link active" data-page="inbound">
+                <span class="nav-icon">📥</span>
+                Inbound Calls
+            </a>
+            <a href="#" class="nav-link" data-page="outbound">
+                <span class="nav-icon">📤</span>
+                Outbound Calls
+            </a>
+            <a href="#" class="nav-link" data-page="fcr">
+                <span class="nav-icon">✅</span>
+                First Contact Resolution
+            </a>
+        </div>
+        <div class="nav-actions">
+            <button id="refresh-btn" class="btn-secondary" title="Refresh Data">
+                <span class="btn-icon">🔄</span>
+                Refresh
+            </button>
+            <button id="export-btn" class="btn-secondary" title="Export Data">
+                <span class="btn-icon">📊</span>
+                Export
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Date Range Filter -->
+        <div class="filters-panel">
+            <div class="filter-group">
+                <label for="date-from">From:</label>
+                <input type="date" id="date-from" class="date-input">
+            </div>
+            <div class="filter-group">
+                <label for="date-to">To:</label>
+                <input type="date" id="date-to" class="date-input">
+            </div>
+            <button id="apply-filters" class="btn-primary">Apply Filters</button>
+            <button id="reset-filters" class="btn-secondary">Reset</button>
+        </div>
+
+        <!-- Page: Inbound Calls -->
+        <div id="inbound-page" class="page active">
+            <div class="page-header">
+                <h2>📥 Inbound Call Performance</h2>
+                <div class="page-actions">
+                    <button class="btn-secondary tooltip" data-tooltip="Download inbound call data as CSV">
+                        <span class="btn-icon">💾</span>
+                        Download CSV
+                    </button>
+                </div>
+            </div>
+            <div id="inbound-content" class="page-content">
+                <!-- Content will be dynamically loaded -->
+            </div>
+        </div>
+
+        <!-- Page: Outbound Calls -->
+        <div id="outbound-page" class="page hidden">
+            <div class="page-header">
+                <h2>📤 Outbound Call Performance</h2>
+                <div class="page-actions">
+                    <button class="btn-secondary tooltip" data-tooltip="Download outbound call data as CSV">
+                        <span class="btn-icon">💾</span>
+                        Download CSV
+                    </button>
+                </div>
+            </div>
+            <div id="outbound-content" class="page-content">
+                <!-- Content will be dynamically loaded -->
+            </div>
+        </div>
+
+        <!-- Page: FCR -->
+        <div id="fcr-page" class="page hidden">
+            <div class="page-header">
+                <h2>✅ First Contact Resolution</h2>
+                <div class="page-actions">
+                    <button class="btn-secondary tooltip" data-tooltip="Download FCR data as CSV">
+                        <span class="btn-icon">💾</span>
+                        Download CSV
+                    </button>
+                </div>
+            </div>
+            <div id="fcr-content" class="page-content">
+                <!-- Content will be dynamically loaded -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Templates for Dynamic Content -->
+    <template id="kpi-template">
+        <div class="kpi-card">
+            <div class="kpi-icon"></div>
+            <div class="kpi-content">
+                <div class="kpi-value"></div>
+                <div class="kpi-label"></div>
+                <div class="kpi-change"></div>
+            </div>
+        </div>
+    </template>
+
+    <template id="chart-template">
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title"></h3>
+                <div class="chart-actions">
+                    <button class="chart-action" data-action="fullscreen" title="Fullscreen">
+                        <span>⛶</span>
+                    </button>
+                    <button class="chart-action" data-action="download" title="Download Chart">
+                        <span>💾</span>
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas class="chart-canvas"></canvas>
+            </div>
+        </div>
+    </template>
+
+    <template id="no-data-template">
+        <div class="no-data-state">
+            <div class="no-data-icon">📊</div>
+            <h3>No Data Available</h3>
+            <p>There's no data to display for the selected time period.</p>
+            <button class="btn-primary">Refresh Data</button>
+        </div>
+    </template>
+
+    <!-- JavaScript Modules -->
+    <script type="module" src="js/config.js"></script>
+    <script type="module" src="js/utils.js"></script>
+    <script type="module" src="js/data-loader.js"></script>
+    <script type="module" src="js/chart-manager.js"></script>
+    <script type="module" src="js/renderers.js"></script>
+    <script type="module" src="js/main.js"></script>
+
+    <!-- Fallback for browsers that don't support modules -->
+    <script nomodule>
+        alert('This dashboard requires a modern browser that supports ES6 modules. Please update your browser.');
+    </script>
+</body>
+</html>
