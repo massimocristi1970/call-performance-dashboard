@@ -257,9 +257,9 @@ export const CONFIG = {
       maxSizeMB: 50
     },
     requiredFields: {
-      inbound: ['date'],
-      outbound: ['date'],
-      fcr: ['date', 'resolved']
+      inbound: [],
+      outbound: [],
+      fcr: []
     }
   }
 };
