@@ -23,28 +23,31 @@ export const CONFIG = {
   },
 
   // Field mappings for different data sources
-  fieldMappings: {
+  // config.js
+fieldMappings: {
   inbound: {
     date: ['Date/Time', 'date', 'call_date', 'datetime', 'starttime'],
-    agent: ['Agent Name', 'agent', 'agent_name', 'user', 'username'], 
+    agent: ['Agent Name', 'agent', 'agent_name', 'user', 'username'],
     status: ['Disposition', 'status', 'call_status', 'outcome', 'disposition'],
     duration: ['Talk Time', 'duration', 'handle_time', 'talk_time'],
     waitTime: ['Wait Time', 'wait_time', 'queue_time', 'hold_time'],
     count: ['count', 'calls', 'call_count', 'total_calls']
   },
   outbound: {
-    date: ['Date', 'date', 'call_date', 'datetime'],
-    agent: ['Agent', 'agent', 'agent_name', 'user'],
-    status: ['status', 'call_status', 'outcome', 'disposition'],
-    duration: ['Total Call Duration', 'duration', 'talk_time', 'call_length'],
-    count: ['Total Calls', 'count', 'calls', 'call_count']
+    date: ['Date', 'Call Date', 'datetime'],
+    agent: ['Agent', 'Agent Name', 'UserName', 'CSR', 'Owner'],
+    status: ['Answered Calls', 'Missed Calls', 'Voicemail Calls', 'status', 'call_status', 'outcome', 'disposition'],
+    duration: ['Total Call Duration', 'Outbound Call Duration', 'Inbound Call Duration', 'duration', 'talk_time', 'call_length'],
+    count: ['Total Calls', 'Outbound Calls', 'Inbound Calls', 'count', 'calls', 'call_count']
   },
   fcr: {
-    date: ['Date', 'date', 'resolution_date', 'case_date'],
-    count: ['Count', 'count', 'cases', 'tickets'],
-    resolved: ['resolved', 'fcr', 'first_contact_resolution', 'outcome']
+    date: ['Date', 'resolution_date', 'case_date'],
+    count: ['Count', 'cases', 'tickets'],
+    // No "resolved" field in your CSV — dashboard will only show total cases over time
+    resolved: ['Resolved', 'Outcome', 'fcr', 'first_contact_resolution']
   }
 },
+
 
   // Chart color schemes
   colorSchemes: {
