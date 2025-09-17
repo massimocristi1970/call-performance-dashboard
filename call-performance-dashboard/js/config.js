@@ -1,10 +1,13 @@
 // config.js
 export const CONFIG = {
   dataSources: {
-    inbound:  { url: "inbound_calls.csv",               name: "Inbound Calls",  icon: "📥", color: "#3b82f6" },
-    outbound: { url: "outbound_calls.csv",              name: "Outbound Calls", icon: "📤", color: "#10b981" },
-    fcr:      { url: "first_contact_resolution.csv",    name: "First Contact Resolution", icon: "✅", color: "#f59e0b" }
+    inbound:  { url: "./data/inbound_calls.csv",            name: "Inbound Calls",  icon: "📥", color: "#3b82f6" },
+    outbound: { url: "./data/outbound_calls.csv",           name: "Outbound Calls", icon: "📤", color: "#10b981" },
+    fcr:      { url: "./data/first_contact_resolution.csv", name: "First Contact Resolution", icon: "✅", color: "#f59e0b" }
   },
+  // ...rest unchanged
+};
+
 
   // Match your exact headers
   fieldMappings: {
