@@ -37,6 +37,8 @@ class PageRenderer {
     const kpis = this.calculateKPIs(pageKey, data);
 
     kpiDefs.forEach(kpiDef => {
+      if (!(kpiDef.key in kpis)) return; // skip if KPI not available
+
       const template = document.getElementById('kpi-template');
       const node = template.content.cloneNode(true);
       const card = node.querySelector('.kpi-card');
@@ -46,14 +48,39 @@ class PageRenderer {
       icon.style.background = `${kpiDef.color}20`;
       icon.style.color = kpiDef.color;
 
-      card.querySelector('.kpi-value').textContent = formatNumber(kpis[kpiDef.key], kpiDef.format);
-      card.querySelector('.kpi-label').textContent = kpiDef.label;
+      const valueEl = card.querySelector('.kpi-value');
+      const value = kpis[kpiDef.key];
+      valueEl.textContent = formatNumber(value, kpiDef.format);
 
+      // Threshold colouring
+      if (kpiDef.threshold) {
+        const { warning, critical } = kpiDef.threshold;
+        if (value >= critical) {
+          valueEl.style.color = 'var(--error-color)';
+        } else if (value >= warning) {
+          valueEl.style.color = 'var(--warning-color)';
+        }
+      }
+
+      card.querySelector('.kpi-label').textContent = kpiDef.label;
       kpiGrid.appendChild(node);
     });
 
     // --- 2. Charts ---
     const chartGrid = container.querySelector('.charts-grid');
+
+    if (pageKey === 'fcr') {
+      // FCR has only Date + Count
+      const chartId = `${pageKey}-cases-over-time`;
+      const chartWrapper = this.createChartWrapper('Cases Over Time', chartId);
+      chartGrid.appendChild(chartWrapper);
+      chartManager.createCallsOverTimeChart(chartId, data, {
+        dateField: 'Date',
+        valueField: 'Count',
+        color: CONFIG.dataSources[pageKey].color
+      });
+      return; // skip status/agent charts
+    }
 
     // Calls over time
     const callsChartId = `${pageKey}-calls-over-time`;
@@ -81,37 +108,36 @@ class PageRenderer {
    * KPI calculations
    */
   calculateKPIs(pageKey, data) {
-  const result = {};
+    const result = {};
 
-  if (pageKey === 'inbound') {
-    const total = data.length;
-    const abandoned = data.filter(r => isAbandoned(r.Disposition)).length;
-    result.totalCalls = total;
-    result.abandonRate = total ? (abandoned / total) * 100 : 0;
-    result.avgHandleTime = this.avgNumeric(data, 'Talk Time');
-    result.avgWaitTime = this.avgNumeric(data, 'Wait Time');
+    if (pageKey === 'inbound') {
+      const total = data.length;
+      const abandoned = data.filter(r => isAbandoned(r.Disposition)).length;
+      result.totalCalls = total;
+      result.abandonRate = total ? (abandoned / total) * 100 : 0;
+      result.avgHandleTime = this.avgNumeric(data, 'Talk Time');
+      result.avgWaitTime = this.avgNumeric(data, 'Wait Time');
+    }
+
+    if (pageKey === 'outbound') {
+      const total = data.reduce((sum, r) => sum + cleanNumber(r['Total Calls']), 0);
+      const answered = data.reduce((sum, r) => sum + cleanNumber(r['Answered Calls']), 0);
+      const duration = data.reduce((sum, r) => sum + cleanNumber(r['Total Call Duration']), 0);
+
+      result.totalCalls = total;
+      result.connectRate = total ? (answered / total) * 100 : 0;
+      result.avgTalkTime = total ? duration / total : 0;
+      // campaignCount dropped (not in your CSV)
+    }
+
+    if (pageKey === 'fcr') {
+      const total = data.reduce((sum, r) => sum + cleanNumber(r['Count']), 0);
+      result.totalCases = total;
+      // No resolved/escalation metrics available
+    }
+
+    return result;
   }
-
-  if (pageKey === 'outbound') {
-    const total = data.reduce((sum, r) => sum + cleanNumber(r['Total Calls']), 0);
-    const answered = data.reduce((sum, r) => sum + cleanNumber(r['Answered Calls']), 0);
-    const duration = data.reduce((sum, r) => sum + cleanNumber(r['Total Call Duration']), 0);
-
-    result.totalCalls = total;
-    result.connectRate = total ? (answered / total) * 100 : 0;
-    result.avgTalkTime = total ? duration / total : 0;
-    // Drop campaignCount since not present in your CSV
-  }
-
-  if (pageKey === 'fcr') {
-    const total = data.reduce((sum, r) => sum + cleanNumber(r['Count']), 0);
-    result.totalCases = total;
-    // No resolved/escalation fields in your CSV, so leave FCR rate out
-  }
-
-  return result;
-}
-
 
   avgNumeric(data, field) {
     const nums = data.map(r => cleanNumber(r[field])).filter(n => n > 0);
