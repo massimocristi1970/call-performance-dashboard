@@ -24,24 +24,27 @@ export const CONFIG = {
 
   // Field mappings for different data sources
   fieldMappings: {
-    inbound: {
-      date: ['Date/Time', 'date', 'call_date', 'datetime', 'starttime'],
-	  agent: ['Agent Name', 'agent', 'agent_name', 'user', 'username'],
-      status: ['Disposition', 'status', 'call_status', 'outcome', 'disposition'],
-      duration: ['Talk Time', 'duration', 'handle_time', 'talk_time'],
-      waitTime: ['Wait Time', 'wait_time', 'queue_time', 'hold_time']
-    },
-    outbound: {
-      date: ['Date', 'date', 'call_date', 'datetime'],
-      agent: ['Agent', 'agent', 'agent_name', 'user'],
-      duration: ['Total Call Duration', 'duration', 'talk_time'],
-      count: ['Total Calls', 'count', 'calls']
-    },
-    fcr: {
-      date: ['Date', 'date', 'resolution_date', 'case_date'],
-	  count: ['Count', 'count', 'cases', 'tickets']
-    }
+  inbound: {
+    date: ['Date/Time', 'date', 'call_date', 'datetime', 'starttime'],
+    agent: ['Agent Name', 'agent', 'agent_name', 'user', 'username'], 
+    status: ['Disposition', 'status', 'call_status', 'outcome', 'disposition'],
+    duration: ['Talk Time', 'duration', 'handle_time', 'talk_time'],
+    waitTime: ['Wait Time', 'wait_time', 'queue_time', 'hold_time'],
+    count: ['count', 'calls', 'call_count', 'total_calls']
   },
+  outbound: {
+    date: ['Date', 'date', 'call_date', 'datetime'],
+    agent: ['Agent', 'agent', 'agent_name', 'user'],
+    status: ['status', 'call_status', 'outcome', 'disposition'],
+    duration: ['Total Call Duration', 'duration', 'talk_time', 'call_length'],
+    count: ['Total Calls', 'count', 'calls', 'call_count']
+  },
+  fcr: {
+    date: ['Date', 'date', 'resolution_date', 'case_date'],
+    count: ['Count', 'count', 'cases', 'tickets'],
+    resolved: ['resolved', 'fcr', 'first_contact_resolution', 'outcome']
+  }
+},
 
   // Chart color schemes
   colorSchemes: {
