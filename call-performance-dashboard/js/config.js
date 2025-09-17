@@ -22,7 +22,7 @@ export const CONFIG = {
     }
   },
 
-  // Field mappings (aligned with your CSV headers)
+  // Field mappings (aligned to your CSVs)
   fieldMappings: {
     inbound: {
       date: ['Date/Time'],
@@ -30,37 +30,40 @@ export const CONFIG = {
       status: ['Disposition'],
       duration: ['Talk Time'],
       waitTime: ['Wait Time'],
-      count: ['Call ID'] // not really a count field, but keeps rows from being dropped
+      // not a count field, but ensures presence during processing
+      count: ['Call ID']
     },
     outbound: {
       date: ['Date'],
       agent: ['Agent'],
+      // outbound is aggregated columns, not a single status field
+      // we’ll sum Answered/Missed/Voicemail separately in renderers
       status: ['Answered Calls', 'Missed Calls', 'Voicemail Calls'],
       duration: ['Total Call Duration'],
       count: ['Total Calls']
     },
     fcr: {
+      // FCR has Year, Month, Date (day) + Count; we’ll build date in data-loader
       date: ['Date'],
       count: ['Count']
-      // no resolved/outcome column in your CSV
     }
   },
 
-  // KPI configurations (only those your data supports)
+  // KPI configurations (only the KPIs your files actually support)
   kpiConfig: {
     inbound: [
-      { key: 'totalCalls', label: 'Total Calls', icon: '📞', color: '#3b82f6', format: 'number' },
-      { key: 'abandonRate', label: 'Abandon Rate', icon: '📉', color: '#ef4444', format: 'percentage', threshold: { warning: 10, critical: 20 } },
-      { key: 'avgHandleTime', label: 'Avg Handle Time', icon: '⏱️', color: '#10b981', format: 'duration' },
-      { key: 'avgWaitTime', label: 'Avg Wait Time', icon: '⏳', color: '#f59e0b', format: 'duration', threshold: { warning: 120, critical: 300 } }
+      { key: 'totalCalls',   label: 'Total Calls',      icon: '📞', color: '#3b82f6', format: 'number' },
+      { key: 'abandonRate',  label: 'Abandon Rate',     icon: '📉', color: '#ef4444', format: 'percentage', threshold: { warning: 10, critical: 20 } },
+      { key: 'avgHandleTime',label: 'Avg Handle Time',  icon: '⏱️', color: '#10b981', format: 'duration' },
+      { key: 'avgWaitTime',  label: 'Avg Wait Time',    icon: '⏳', color: '#f59e0b', format: 'duration', threshold: { warning: 120, critical: 300 } }
     ],
     outbound: [
-      { key: 'totalCalls', label: 'Total Calls', icon: '📞', color: '#3b82f6', format: 'number' },
-      { key: 'connectRate', label: 'Connect Rate', icon: '📈', color: '#10b981', format: 'percentage', threshold: { warning: 15, critical: 10 } },
-      { key: 'avgTalkTime', label: 'Avg Talk Time', icon: '💬', color: '#8b5cf6', format: 'duration' }
+      { key: 'totalCalls',   label: 'Total Calls',      icon: '📞', color: '#3b82f6', format: 'number' },
+      { key: 'connectRate',  label: 'Connect Rate',     icon: '📈', color: '#10b981', format: 'percentage', threshold: { warning: 15, critical: 10 } },
+      { key: 'avgTalkTime',  label: 'Avg Talk Time',    icon: '💬', color: '#8b5cf6', format: 'duration' }
     ],
     fcr: [
-      { key: 'totalCases', label: 'Total Cases', icon: '📝', color: '#3b82f6', format: 'number' }
+      { key: 'totalCases',   label: 'Total Cases',      icon: '📝', color: '#3b82f6', format: 'number' }
     ]
   },
 
@@ -69,11 +72,11 @@ export const CONFIG = {
     primary: ['#3b82f6', '#1d4ed8', '#1e40af', '#1e3a8a'],
     success: ['#10b981', '#059669', '#047857', '#065f46'],
     warning: ['#f59e0b', '#d97706', '#b45309', '#92400e'],
-    danger: ['#ef4444', '#dc2626', '#b91c1c', '#991b1b'],
-    mixed: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+    danger:  ['#ef4444', '#dc2626', '#b91c1c', '#991b1b'],
+    mixed:   ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
   },
 
-  // Status classification patterns
+  // Status patterns (used for inbound abandon/connect detection)
   statusPatterns: {
     abandoned: ['abandon', 'missed', 'no answer', 'noanswer', 'timeout', 'hangup'],
     connected: ['connect', 'answer', 'success', 'completed', 'resolved'],
@@ -84,9 +87,9 @@ export const CONFIG = {
   // Date formats
   dateFormats: {
     display: 'MMM DD, YYYY',
-    input: 'YYYY-MM-DD',
-    chart: 'MMM YYYY',
-    api: 'YYYY-MM-DD HH:mm:ss'
+    input:   'YYYY-MM-DD',
+    chart:   'MMM YYYY',
+    api:     'YYYY-MM-DD HH:mm:ss'
   },
 
   // Chart defaults
@@ -135,7 +138,7 @@ export const CONFIG = {
     enableVirtualScrolling: true
   },
 
-  // Feature flags
+  // Features
   features: {
     realTimeUpdates: false,
     dataExport: true,
@@ -145,27 +148,24 @@ export const CONFIG = {
     notifications: true
   },
 
-  // Validation rules
+  // Validation
   validation: {
     dateRange: { maxDays: 365, defaultDays: 30 },
-    fileSize: { maxSizeMB: 50 },
+    fileSize:  { maxSizeMB: 50 },
     requiredFields: { inbound: [], outbound: [], fcr: [] }
   }
 };
 
-// Utility functions
+// Helpers
 export function getFieldMapping(dataSource, fieldType) {
   return CONFIG.fieldMappings[dataSource]?.[fieldType] || [];
 }
-
 export function getKPIConfig(dataSource) {
   return CONFIG.kpiConfig[dataSource] || [];
 }
-
 export function getColorScheme(scheme = 'primary') {
   return CONFIG.colorSchemes[scheme] || CONFIG.colorSchemes.primary;
 }
-
 export function matchesStatusPattern(status, pattern) {
   if (!status) return false;
   const statusLower = String(status).toLowerCase();
