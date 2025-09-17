@@ -857,4 +857,48 @@ export default pageRenderer;d] || '').toLowerCase();
       if (!agentStats[agent]) agentStats[agent] = { total: 0, resolved: 0 };
       
       agentStats[agent].total++;
-      const resolved = String(row[resolvedFiel
+      const resolved = String(row[resolvedField] || '').toLowerCase();
+      if (resolved.includes('yes') || resolved.includes('true') || resolved === '1') {
+        agentStats[agent].resolved++;
+      }
+    });
+
+    // Filter agents with at least 5 cases and sort by FCR rate
+    const agents = Object.entries(agentStats)
+      .filter(([, stats]) => stats.total >= 5)
+      .map(([agent, stats]) => ({
+        agent,
+        fcrRate: stats.total > 0 ? (stats.resolved / stats.total) * 100 : 0,
+        total: stats.total
+      }))
+      .sort((a, b) => b.fcrRate - a.fcrRate)
+      .slice(0, 10);
+
+    chartManager.createBarChart(containerId, data, {
+      labels: agents.map(a => a.agent),
+      data: agents.map(a => a.fcrRate),
+      label: 'FCR Rate by Agent',
+      valueFormat: 'percentage',
+      multiColor: true,
+      horizontal: true
+    });
+  }
+
+  exportTableData(sourceKey) {
+    const data = dataLoader.getData(sourceKey, this.currentFilters);
+    if (!data || data.length === 0) {
+      alert('No data to export');
+      return;
+    }
+
+    const filename = `${sourceKey}_data_${new Date().toISOString().split('T')[0]}.csv`;
+    window.exportToCsv(data, filename);
+  }
+
+  updateFilters(filters) {
+    this.currentFilters = { ...filters };
+  }
+}
+
+export const pageRenderer = new PageRenderer();
+export default pageRenderer;
