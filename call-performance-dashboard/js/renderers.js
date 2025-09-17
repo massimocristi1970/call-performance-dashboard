@@ -50,53 +50,61 @@ class PageRenderer {
     });
 
     // Charts
-    const grid = container.querySelector('.charts-grid');
+const grid = container.querySelector('.charts-grid');
 
-    if(pageKey==='fcr'){
-      const id = `${pageKey}-cases-over-time`;
-      grid.appendChild(this.chartWrap('Cases Over Time', id));
-      const valueField = ('Count_numeric' in data[0]) ? 'Count_numeric' : 'Count';
-      chartManager.createCallsOverTimeChart(id, data, {
-        dateField: 'Date', valueField, color: CONFIG.dataSources[pageKey].color
-      });
-      return;
-    }
+if (pageKey === 'fcr') {
+  const id = `${pageKey}-cases-over-time`;
+  grid.appendChild(this.chartWrap('Cases Over Time', id));
+  const valueField = ('Count_numeric' in data[0]) ? 'Count_numeric' : 'Count';
+  chartManager.createCallsOverTimeChart(id, data, {
+    dateField: 'date_parsed',
+    valueField,
+    color: CONFIG.dataSources[pageKey].color
+  });
+  return;
+}
 
-    if(pageKey==='outbound'){
-      const id1 = `${pageKey}-calls-over-time`;
-      grid.appendChild(this.chartWrap('Outbound Calls Over Time', id1));
-      chartManager.createCallsOverTimeChart(id1, data, {
-        dateField: 'Date', valueField: 'TotalCalls_numeric', color: CONFIG.dataSources[pageKey].color
-      });
+if (pageKey === 'outbound') {
+  const id1 = `${pageKey}-calls-over-time`;
+  grid.appendChild(this.chartWrap('Outbound Calls Over Time', id1));
+  chartManager.createCallsOverTimeChart(id1, data, {
+    dateField: 'date_parsed',
+    valueField: 'TotalCalls_numeric',
+    color: CONFIG.dataSources[pageKey].color
+  });
 
-      const id2 = `${pageKey}-outcomes`;
-      grid.appendChild(this.chartWrap('Call Outcomes', id2));
-      const answered = data.reduce((s,r)=>s+cleanNumber(r.AnsweredCalls_numeric),0);
-      const missed   = data.reduce((s,r)=>s+cleanNumber(r.MissedCalls_numeric),0);
-      const vm       = data.reduce((s,r)=>s+cleanNumber(r.VoicemailCalls_numeric),0);
-      chartManager.createDoughnutChart(id2, data, { labels:['Answered','Missed','Voicemail'], data:[answered,missed,vm] });
+  const id2 = `${pageKey}-outcomes`;
+  grid.appendChild(this.chartWrap('Call Outcomes', id2));
+  const answered = data.reduce((s, r) => s + cleanNumber(r.AnsweredCalls_numeric), 0);
+  const missed   = data.reduce((s, r) => s + cleanNumber(r.MissedCalls_numeric), 0);
+  const vm       = data.reduce((s, r) => s + cleanNumber(r.VoicemailCalls_numeric), 0);
+  chartManager.createDoughnutChart(id2, data, {
+    labels: ['Answered', 'Missed', 'Voicemail'],
+    data: [answered, missed, vm]
+  });
 
-      const byAgent = {};
-      data.forEach(r => {
-        const a = r.Agent || r['Agent'];
-        if(!a) return;
-        byAgent[a] = (byAgent[a] || 0) + cleanNumber(r.TotalCalls_numeric);
-      });
-      const labels = Object.keys(byAgent).sort((a,b)=>byAgent[b]-byAgent[a]).slice(0,10);
-      const vals   = labels.map(l => byAgent[l]);
-      const id3 = `${pageKey}-agent`;
-      grid.appendChild(this.chartWrap('Calls per Agent', id3));
-      chartManager.createBarChart(id3, data, { labels, data: vals, label: 'Total Calls', multiColor: true });
-      return;
-    }
+  const byAgent = {};
+  data.forEach(r => {
+    const a = r.Agent || r['Agent'];
+    if (!a) return;
+    byAgent[a] = (byAgent[a] || 0) + cleanNumber(r.TotalCalls_numeric);
+  });
+  const labels = Object.keys(byAgent).sort((a, b) => byAgent[b] - byAgent[a]).slice(0, 10);
+  const vals   = labels.map(l => byAgent[l]);
+  const id3 = `${pageKey}-agent`;
+  grid.appendChild(this.chartWrap('Calls per Agent', id3));
+  chartManager.createBarChart(id3, data, { labels, data: vals, label: 'Total Calls', multiColor: true });
+  return;
+}
 
-    // Inbound
-    const idA = `${pageKey}-calls-over-time`;
-    grid.appendChild(this.chartWrap('Inbound Calls Over Time', idA));
-    chartManager.createCallsOverTimeChart(idA, data, {
-      dateField: getFieldMapping(pageKey,'date')[0] || 'Date/Time',
-      color: CONFIG.dataSources[pageKey].color
-    });
+// Inbound
+const idA = `${pageKey}-calls-over-time`;
+grid.appendChild(this.chartWrap('Inbound Calls Over Time', idA));
+chartManager.createCallsOverTimeChart(idA, data, {
+  dateField: 'date_parsed',
+  color: CONFIG.dataSources[pageKey].color
+});
+
 
     const idB = `${pageKey}-status`;
     grid.appendChild(this.chartWrap('Status Distribution', idB));
@@ -149,7 +157,6 @@ class PageRenderer {
 
   return out;
 }
-
 
   avg(data, field){
     const nums = data.map(r => cleanNumber(r[field])).filter(n => n>=0);

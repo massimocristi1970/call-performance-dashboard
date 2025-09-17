@@ -126,16 +126,24 @@ class DataLoader {
     });
 
     // --- Build date_parsed ---
-    // FCR: compose from Year/Month/Date (day)
-    if (key === 'fcr' && (row.Year || row.Month || row.Date)) {
-      const y = cleanNumber(row.Year);
-      const m = cleanNumber(row.Month);
-      const d = cleanNumber(row.Date);
-      if (y && m && d) {
-        const dt = new Date(y, m - 1, d);
-        if (!isNaN(dt.getTime())) r.date_parsed = dt;
-      }
-    }
+// FCR: compose from Year/Month/Date (day) OR fall back to parsing the "Date" column if it's a full date
+if (key === 'fcr') {
+  const y = cleanNumber(row.Year);
+  const m = cleanNumber(row.Month);
+  const d = cleanNumber(row.Date);
+
+  if (y && m && d) {
+    const dt = new Date(y, m - 1, d);
+    if (!isNaN(dt.getTime())) r.date_parsed = dt;
+  }
+
+  // Fallback: some files have a proper full date string in "Date" (not just day-of-month)
+  if (!r.date_parsed && row.Date) {
+    const tryFull = parseDate(row.Date);
+    if (tryFull) r.date_parsed = tryFull;
+  }
+}
+
 
     // Generic mapped date (if not already set)
     if (!r.date_parsed) {
@@ -194,18 +202,23 @@ class DataLoader {
   }
 
   filterByDateRange(key, startDate, endDate) {
-    const data = this.data[key] || [];
-    if (!startDate || !endDate) return data;
+  const data = this.data[key] || [];
+  if (!startDate || !endDate) return data;
 
-    const s = parseDate(startDate);
-    const e = parseDate(endDate);
-    if (!s || !e) return data;
+  const s = parseDate(startDate);
+  const e = parseDate(endDate);
+  if (!s || !e) return data;
 
-    const eod = new Date(e);
-    eod.setHours(23, 59, 59, 999);
+  // 🔸 If this dataset has no parsed dates at all, don't filter it out
+  const hasAnyDate = data.some(r => r.date_parsed instanceof Date && !isNaN(r.date_parsed));
+  if (!hasAnyDate) return data;
 
-    return data.filter((r) => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
-  }
+  const eod = new Date(e);
+  eod.setHours(23, 59, 59, 999);
+
+  return data.filter(r => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
+}
+
 
   getData(key, filters = {}) {
     let data = [...(this.data[key] || [])];

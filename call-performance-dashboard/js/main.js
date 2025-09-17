@@ -1,5 +1,5 @@
 // Main application module
-// js/main.js
+
 import { CONFIG } from './config.js';
 import {
   showError,
@@ -17,6 +17,7 @@ import pageRenderer from './renderers.js';
 window.CONFIG = CONFIG;
 window.dataLoader = dataLoader;
 window.pageRenderer = pageRenderer;
+window.chartManager = chartManager;
 
 
 class Dashboard {
