@@ -1,4 +1,4 @@
-// utils.js
+// js/utils.js
 import { CONFIG } from './config.js';
 
 export function normalizeHeader(h){
@@ -18,7 +18,7 @@ export function cleanNumber(v){
   return Number.isFinite(n) ? n : 0;
 }
 
-// Accepts: ISO, YYYY-MM-DD HH:mm[:ss], DD/MM/YYYY[ HH:mm[:ss]] (UK first), MM/DD/YYYY fallback, Excel serials
+// ISO, YYYY-MM-DD, DD/MM/YYYY[ HH:mm[:ss]], d-m-y[ time], Excel serials
 export function parseDate(value){
   if(!value) return null;
   if(value instanceof Date) return isNaN(value.getTime()) ? null : value;
@@ -35,27 +35,27 @@ export function parseDate(value){
     }
   }
 
-  // ISO / YYYY-MM-DD with optional time
+  // ISO / yyyy-mm-dd
   if(/^\d{4}-\d{2}-\d{2}/.test(s)){
-    const d = new Date(s.replace(' ', 'T'));
+    const d = new Date(s.replace(' ','T'));
     return isNaN(d.getTime()) ? null : d;
   }
 
-  // DD/MM/YYYY with optional time
+  // dd/mm/yyyy [time]
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if(m){
-    const dd = +m[1], MM = +m[2], yy = +m[3] < 100 ? 2000 + (+m[3]) : +m[3];
-    const hh = +(m[4] ?? 0), mi = +(m[5] ?? 0), ss = +(m[6] ?? 0);
-    const d  = new Date(yy, MM-1, dd, hh, mi, ss);
+    const dd=+m[1], MM=+m[2], yy=+m[3] < 100 ? 2000 + (+m[3]) : +m[3];
+    const hh=+(m[4] ?? 0), mi=+(m[5] ?? 0), ss=+(m[6] ?? 0);
+    const d = new Date(yy, MM-1, dd, hh, mi, ss);
     return isNaN(d.getTime()) ? null : d;
   }
 
-  // Ambiguous d-m-y or m-d-y with dashes — prefer UK (d-m-y)
+  // d-m-y [time] (prefer UK)
   m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if(m){
-    const dd = +m[1], MM = +m[2], yy = +m[3] < 100 ? 2000 + (+m[3]) : +m[3];
-    const hh = +(m[4] ?? 0), mi = +(m[5] ?? 0), ss = +(m[6] ?? 0);
-    const d  = new Date(yy, MM-1, dd, hh, mi, ss);
+    const dd=+m[1], MM=+m[2], yy=+m[3] < 100 ? 2000 + (+m[3]) : +m[3];
+    const hh=+(m[4] ?? 0), mi=+(m[5] ?? 0), ss=+(m[6] ?? 0);
+    const d = new Date(yy, MM-1, dd, hh, mi, ss);
     return isNaN(d.getTime()) ? null : d;
   }
 

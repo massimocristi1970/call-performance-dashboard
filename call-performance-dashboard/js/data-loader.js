@@ -1,4 +1,4 @@
-// data-loader.js
+// js/data-loader.js
 import { CONFIG, getFieldMapping } from './config.js';
 import { showError, hideError, showLoading, hideLoading, updateProgress, normalizeHeader, parseDate, cleanNumber } from './utils.js';
 
@@ -62,7 +62,7 @@ class DataLoader {
       rowCount: data.length,
       columns: data.length? Object.keys(data[0]) : [],
       loadedAt: new Date().toISOString(),
-      dateRange: this.getDateRange(data, key)
+      dateRange: this.getDateRange(data)
     };
     return { data, metadata: meta };
   }
@@ -85,7 +85,7 @@ class DataLoader {
     const r = {};
     Object.keys(row).forEach(k => { const ck = k.trim(); if(ck) r[ck] = row[k]; });
 
-    // Compose date for FCR: Year, Month, Date (day)
+    // FCR: compose date from Year/Month/Date (day)
     if(key==='fcr' && (row.Year || row.Month || row.Date)){
       const y = cleanNumber(row.Year), m = cleanNumber(row.Month), d = cleanNumber(row.Date);
       if(y && m && d){
@@ -103,7 +103,7 @@ class DataLoader {
       }
     }
 
-    // Numeric helpers
+    // Inbound numeric helpers
     if(key==='inbound'){
       const durF = this.findBestMatch(Object.keys(r), map.duration||[]);
       const waitF= this.findBestMatch(Object.keys(r), map.waitTime||[]);
@@ -111,6 +111,7 @@ class DataLoader {
       if(waitF) r.waitTime_numeric = cleanNumber(r[waitF]);
     }
 
+    // Outbound numeric totals
     if(key==='outbound'){
       r.TotalCalls_numeric        = cleanNumber(r['Total Calls']);
       r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
@@ -119,6 +120,7 @@ class DataLoader {
       r.VoicemailCalls_numeric    = cleanNumber(r['Voicemail Calls']);
     }
 
+    // FCR count
     if(key==='fcr'){
       r.Count_numeric = cleanNumber(r['Count']);
     }
@@ -136,19 +138,15 @@ class DataLoader {
     return null;
   }
 
-  // Keep everything; filtering happens later
-  isValidRow(row, key){ return true; }
+  // Keep rows; filtering happens later
+  isValidRow(){ return true; }
 
-  getDateRange(data, key){
-    const dates = [];
-    data.forEach(r => {
-      const d = r.date_parsed || null;
-      if(d) dates.push(d);
-    });
+  getDateRange(data){
+    const dates = data.map(r => r.date_parsed).filter(Boolean);
     if(dates.length===0) return null;
     dates.sort((a,b)=>a-b);
     return { start: dates[0], end: dates[dates.length-1], count: dates.length };
-    }
+  }
 
   filterByDateRange(key, startDate, endDate){
     const data = this.data[key] || [];
@@ -156,37 +154,29 @@ class DataLoader {
     const s = parseDate(startDate), e = parseDate(endDate);
     if(!s || !e) return data;
     const eod = new Date(e); eod.setHours(23,59,59,999);
-
-    return data.filter(r => {
-      const d = r.date_parsed;
-      return d && d >= s && d <= eod;
-    });
+    return data.filter(r => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
   }
 
-  getData(key, filters={}){
+  getData(key, filters = {}){
     let data = [...(this.data[key] || [])];
 
     if(filters.startDate && filters.endDate){
       data = this.filterByDateRange(key, filters.startDate, filters.endDate);
     }
-
     if(filters.agent){
       const fields = getFieldMapping(key, 'agent');
       const q = filters.agent.toLowerCase();
       data = data.filter(r => fields.some(f => r[f] && String(r[f]).toLowerCase().includes(q)));
     }
-
     if(filters.status){
       const fields = getFieldMapping(key, 'status');
       const q = filters.status.toLowerCase();
       data = data.filter(r => fields.some(f => r[f] && String(r[f]).toLowerCase().includes(q)));
     }
-
     return data;
   }
 
   getMetadata(key){ return this.metadata[key] || {}; }
-  async refresh(key){ /* unchanged */ }
   clear(){ this.data = {}; this.metadata = {}; }
 }
 
