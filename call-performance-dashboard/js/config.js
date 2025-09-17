@@ -25,30 +25,21 @@ export const CONFIG = {
   // Field mappings for different data sources
   fieldMappings: {
     inbound: {
-      date: ['date', 'call_date', 'datetime', 'starttime', 'starttimeutc', 'timestamp'],
-      agent: ['agent', 'agent_name', 'user', 'username', 'owner', 'handler'],
-      status: ['status', 'call_status', 'outcome', 'disposition', 'result'],
-      duration: ['duration', 'handle_time', 'aht', 'talk_time', 'call_length', 'duration_seconds'],
-      count: ['count', 'calls', 'call_count', 'total_calls'],
-      queue: ['queue', 'queue_name', 'service', 'department'],
-      waitTime: ['wait_time', 'queue_time', 'hold_time']
+      date: ['Date/Time', 'date', 'call_date', 'datetime', 'starttime'],
+	  agent: ['Agent Name', 'agent', 'agent_name', 'user', 'username'],
+      status: ['Disposition', 'status', 'call_status', 'outcome', 'disposition'],
+      duration: ['Talk Time', 'duration', 'handle_time', 'talk_time'],
+      waitTime: ['Wait Time', 'wait_time', 'queue_time', 'hold_time']
     },
     outbound: {
-      date: ['date', 'call_date', 'datetime', 'starttime', 'starttimeutc', 'timestamp'],
-      agent: ['agent', 'agent_name', 'user', 'username', 'owner', 'dialer'],
-      status: ['status', 'call_status', 'outcome', 'disposition', 'result'],
-      duration: ['duration', 'talk_time', 'call_length', 'duration_seconds'],
-      count: ['count', 'calls', 'call_count', 'total_calls'],
-      campaign: ['campaign', 'campaign_name', 'list', 'list_name'],
-      contact: ['contact', 'phone', 'number', 'customer']
+      date: ['Date', 'date', 'call_date', 'datetime'],
+      agent: ['Agent', 'agent', 'agent_name', 'user'],
+      duration: ['Total Call Duration', 'duration', 'talk_time'],
+      count: ['Total Calls', 'count', 'calls']
     },
     fcr: {
-      date: ['date', 'resolution_date', 'case_date', 'created_date'],
-      agent: ['agent', 'agent_name', 'resolver', 'handler'],
-      resolved: ['resolved', 'fcr', 'first_contact_resolution', 'outcome'],
-      case_id: ['case_id', 'ticket', 'reference', 'id'],
-      category: ['category', 'type', 'issue_type', 'department'],
-      count: ['count', 'cases', 'tickets']
+      date: ['Date', 'date', 'resolution_date', 'case_date'],
+	  count: ['Count', 'count', 'cases', 'tickets']
     }
   },
 
