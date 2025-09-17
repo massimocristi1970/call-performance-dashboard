@@ -39,7 +39,7 @@ export const CONFIG = {
     },
     fcr: {
       date: ['Date'],
-      count: ['Count']
+      count: ['Count'],
       // no resolved field in your CSV
     }
   },
@@ -65,7 +65,6 @@ export const CONFIG = {
 
   // leave the rest of CONFIG (colors, validation, performance, etc.) unchanged
 };
-
 
 
   // Chart color schemes
