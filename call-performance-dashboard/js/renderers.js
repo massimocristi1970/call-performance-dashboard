@@ -19,69 +19,6 @@ class PageRenderer {
     this.currentFilters = {};
   }
 
-  createAgentFCRChart(containerId, data, agentField, resolvedField) {
-    const agentStats = {};
-    
-    data.forEach(row => {
-      const agent = row[agentField] || 'Unknown';
-      if (!agentStats[agent]) agentStats[agent] = { total: 0, resolved: 0 };
-      
-      agentStats[agent].total++;
-      const resolved = String(row[resolvedField] || '').toLowerCase();
-      if (resolved.includes('yes') || resolved.includes('true') || resolved === '1') {
-        agentStats[agent].resolved++;
-      }
-    });
-
-    // Filter agents with at least 5 cases and sort by FCR rate
-    const agents = Object.entries(agentStats)
-      .filter(([, stats]) => stats.total >= 5)
-      .map(([agent, stats]) => ({
-        agent,
-        fcrRate: stats.total > 0 ? (stats.resolved / stats.total) * 100 : 0,
-        total: stats.total
-      }))
-      .sort((a, b) => b.fcrRate - a.fcrRate)
-      .slice(0, 10);
-
-    chartManager.createBarChart(containerId, data, {
-      labels: agents.map(a => a.agent),
-      data: agents.map(a => a.fcrRate),
-      label: 'FCR Rate by Agent',
-      valueFormat: 'percentage',
-      multiColor: true,
-      horizontal: true
-    });
-  }
-
-  /**
-   * Export table data
-   */
-  exportTableData(sourceKey) {
-    const data = dataLoader.getData(sourceKey, this.currentFilters);
-    if (!data || data.length === 0) {
-      alert('No data to export');
-      return;
-    }
-
-    const filename = `${sourceKey}_data_${new Date().toISOString().split('T')[0]}.csv`;
-    
-    // Use utility function from utils.js
-    window.exportToCsv(data, filename);
-  }
-
-  /**
-   * Update current filters
-   */
-  updateFilters(filters) {
-    this.currentFilters = { ...filters };
-  }
-}
-
-// Create and export singleton instance
-export const pageRenderer = new PageRenderer();
-export default pageRenderer;
-
   /**
    * Render inbound calls page
    */
@@ -223,7 +160,7 @@ export default pageRenderer;
     }
 
     // Render data table
-    this.renderDataTable('inbound-table', data.slice(0, 100)); // Show first 100 rows
+    this.renderDataTable('inbound-table', data.slice(0, 100));
   }
 
   /**
@@ -603,6 +540,59 @@ export default pageRenderer;
       data.forEach(row => {
         const weight = countField ? cleanNumber(row[countField]) : 1;
         const resolved = String(row[resolvedField] || '').toLowerCase();
+      if (resolved.includes('yes') || resolved.includes('true') || resolved === '1') {
+        agentStats[agent].resolved++;
+      }
+    });
+
+    // Filter agents with at least 5 cases and sort by FCR rate
+    const agents = Object.entries(agentStats)
+      .filter(([, stats]) => stats.total >= 5)
+      .map(([agent, stats]) => ({
+        agent,
+        fcrRate: stats.total > 0 ? (stats.resolved / stats.total) * 100 : 0,
+        total: stats.total
+      }))
+      .sort((a, b) => b.fcrRate - a.fcrRate)
+      .slice(0, 10);
+
+    chartManager.createBarChart(containerId, data, {
+      labels: agents.map(a => a.agent),
+      data: agents.map(a => a.fcrRate),
+      label: 'FCR Rate by Agent',
+      valueFormat: 'percentage',
+      multiColor: true,
+      horizontal: true
+    });
+  }
+
+  /**
+   * Export table data
+   */
+  exportTableData(sourceKey) {
+    const data = dataLoader.getData(sourceKey, this.currentFilters);
+    if (!data || data.length === 0) {
+      alert('No data to export');
+      return;
+    }
+
+    const filename = `${sourceKey}_data_${new Date().toISOString().split('T')[0]}.csv`;
+    
+    // Use utility function from utils.js
+    window.exportToCsv(data, filename);
+  }
+
+  /**
+   * Update current filters
+   */
+  updateFilters(filters) {
+    this.currentFilters = { ...filters };
+  }
+}
+
+// Create and export singleton instance
+export const pageRenderer = new PageRenderer();
+export default pageRenderer;d] || '').toLowerCase();
         if (resolved.includes('yes') || resolved.includes('true') || resolved === '1') {
           resolvedCases += weight;
         }
@@ -612,7 +602,7 @@ export default pageRenderer;
     const fcrRate = totalCases > 0 ? (resolvedCases / totalCases) * 100 : 0;
 
     // Average resolution time (placeholder - would need actual resolution time field)
-    const avgResolutionTime = 0; // TODO: Calculate if resolution time field is available
+    const avgResolutionTime = 0;
 
     // Escalation rate (inverse of FCR rate as approximation)
     const escalationRate = totalCases > 0 ? ((totalCases - resolvedCases) / totalCases) * 100 : 0;
@@ -643,12 +633,10 @@ export default pageRenderer;
       
       if (threshold && kpi.format === 'percentage') {
         if (config.key === 'abandonRate' || config.key === 'escalationRate') {
-          // Higher is worse
           if (kpi.value >= threshold.critical) statusClass = 'negative';
           else if (kpi.value >= threshold.warning) statusClass = 'warning';
           else statusClass = 'positive';
         } else {
-          // Higher is better
           if (kpi.value >= threshold.warning) statusClass = 'positive';
           else if (kpi.value >= threshold.critical) statusClass = 'warning';
           else statusClass = 'negative';
@@ -685,19 +673,14 @@ export default pageRenderer;
    * Render no data state
    */
   renderNoData(container) {
-    const template = document.getElementById('no-data-template');
-    if (template) {
-      container.innerHTML = template.innerHTML;
-    } else {
-      container.innerHTML = `
-        <div class="no-data-state">
-          <div class="no-data-icon">📊</div>
-          <h3>No Data Available</h3>
-          <p>There's no data to display for the selected time period.</p>
-          <button class="btn-primary" onclick="location.reload()">Refresh Data</button>
-        </div>
-      `;
-    }
+    container.innerHTML = `
+      <div class="no-data-state">
+        <div class="no-data-icon">📊</div>
+        <h3>No Data Available</h3>
+        <p>There's no data to display for the selected time period.</p>
+        <button class="btn-primary" onclick="location.reload()">Refresh Data</button>
+      </div>
+    `;
   }
 
   /**
@@ -750,7 +733,7 @@ export default pageRenderer;
     // Format durations (if looks like seconds)
     if ((headerLower.includes('duration') || headerLower.includes('time')) && !isNaN(str)) {
       const num = parseFloat(str);
-      if (num > 0 && num < 86400) { // Less than 24 hours in seconds
+      if (num > 0 && num < 86400) {
         return formatNumber(num, 'duration');
       }
     }
@@ -788,7 +771,6 @@ export default pageRenderer;
   }
 
   createFCRTrendChart(containerId, data, dateField, resolvedField) {
-    // Group by month and calculate FCR rate for each month
     const monthly = {};
     
     data.forEach(row => {
@@ -875,57 +857,4 @@ export default pageRenderer;
       if (!agentStats[agent]) agentStats[agent] = { total: 0, resolved: 0 };
       
       agentStats[agent].total++;
-      const resolved = String(row[resolvedField] || '').toLowerCase();
-      if (resolved.includes('yes') || resolved.includes('true') || resolved === '1') {
-        agentStats[agent].resolved++;
-      }
-    });
-
-    // Filter agents with at least 5 cases and sort by FCR rate
-    const agents = Object.entries(agentStats)
-      .filter(([, stats]) => stats.total >= 5)
-      .map(([agent, stats]) => ({
-        agent,
-        fcrRate: stats.total > 0 ? (stats.resolved / stats.total) * 100 : 0,
-        total: stats.total
-      }))
-      .sort((a, b) => b.fcrRate - a.fcrRate)
-      .slice(0, 10);
-
-    chartManager.createBarChart(containerId, data, {
-      labels: agents.map(a => a.agent),
-      data: agents.map(a => a.fcrRate),
-      label: 'FCR Rate by Agent',
-      valueFormat: 'percentage',
-      multiColor: true,
-      horizontal: true
-    });
-  }
-
-  /**
-   * Export table data
-   */
-  exportTableData(sourceKey) {
-    const data = dataLoader.getData(sourceKey, this.currentFilters);
-    if (!data || data.length === 0) {
-      alert('No data to export');
-      return;
-    }
-
-    const filename = `${sourceKey}_data_${new Date().toISOString().split('T')[0]}.csv`;
-    
-    // Use utility function from utils.js
-    window.exportToCsv(data, filename);
-  }
-
-  /**
-   * Update current filters
-   */
-  updateFilters(filters) {
-    this.currentFilters = { ...filters };
-  }
-}
-
-// Create and export singleton instance
-export const pageRenderer = new PageRenderer();
-export default pageRenderer;
+      const resolved = String(row[resolvedFiel
