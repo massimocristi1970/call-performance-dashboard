@@ -81,37 +81,37 @@ class PageRenderer {
    * KPI calculations
    */
   calculateKPIs(pageKey, data) {
-    const result = {};
+  const result = {};
 
-    if (pageKey === 'inbound') {
-      const total = data.length;
-      const abandoned = data.filter(r => isAbandoned(r.status)).length;
-      result.totalCalls = total;
-      result.abandonRate = total ? (abandoned / total) * 100 : 0;
-      result.avgHandleTime = this.avgNumeric(data, 'duration_numeric');
-      result.avgWaitTime = this.avgNumeric(data, 'waitTime_numeric');
-    }
-
-    if (pageKey === 'outbound') {
-      const total = data.length;
-      const connected = data.filter(r => isConnected(r.status)).length;
-      result.totalCalls = total;
-      result.connectRate = total ? (connected / total) * 100 : 0;
-      result.avgTalkTime = this.avgNumeric(data, 'duration_numeric');
-      result.campaignCount = new Set(data.map(r => r.Campaign || r.campaign || '')).size;
-    }
-
-    if (pageKey === 'fcr') {
-      const total = data.length;
-      const resolved = data.filter(r => String(r.resolved).toLowerCase() === 'true').length;
-      result.totalCases = total;
-      result.fcrRate = total ? (resolved / total) * 100 : 0;
-      result.avgResolutionTime = this.avgNumeric(data, 'duration_numeric');
-      result.escalationRate = total ? ((total - resolved) / total) * 100 : 0;
-    }
-
-    return result;
+  if (pageKey === 'inbound') {
+    const total = data.length;
+    const abandoned = data.filter(r => isAbandoned(r.Disposition)).length;
+    result.totalCalls = total;
+    result.abandonRate = total ? (abandoned / total) * 100 : 0;
+    result.avgHandleTime = this.avgNumeric(data, 'Talk Time');
+    result.avgWaitTime = this.avgNumeric(data, 'Wait Time');
   }
+
+  if (pageKey === 'outbound') {
+    const total = data.reduce((sum, r) => sum + cleanNumber(r['Total Calls']), 0);
+    const answered = data.reduce((sum, r) => sum + cleanNumber(r['Answered Calls']), 0);
+    const duration = data.reduce((sum, r) => sum + cleanNumber(r['Total Call Duration']), 0);
+
+    result.totalCalls = total;
+    result.connectRate = total ? (answered / total) * 100 : 0;
+    result.avgTalkTime = total ? duration / total : 0;
+    // Drop campaignCount since not present in your CSV
+  }
+
+  if (pageKey === 'fcr') {
+    const total = data.reduce((sum, r) => sum + cleanNumber(r['Count']), 0);
+    result.totalCases = total;
+    // No resolved/escalation fields in your CSV, so leave FCR rate out
+  }
+
+  return result;
+}
+
 
   avgNumeric(data, field) {
     const nums = data.map(r => cleanNumber(r[field])).filter(n => n > 0);
