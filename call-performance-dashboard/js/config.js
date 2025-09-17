@@ -1,5 +1,6 @@
 // config.js
 export const CONFIG = {
+  // Data sources
   dataSources: {
     inbound: {
       url: "data/inbound_calls.csv",
@@ -21,6 +22,7 @@ export const CONFIG = {
     }
   },
 
+  // Field mappings (aligned with your CSV headers)
   fieldMappings: {
     inbound: {
       date: ['Date/Time'],
@@ -28,7 +30,7 @@ export const CONFIG = {
       status: ['Disposition'],
       duration: ['Talk Time'],
       waitTime: ['Wait Time'],
-      count: ['Call ID'] // not really a count field, but ensures rows aren’t dropped
+      count: ['Call ID'] // not really a count field, but keeps rows from being dropped
     },
     outbound: {
       date: ['Date'],
@@ -39,11 +41,12 @@ export const CONFIG = {
     },
     fcr: {
       date: ['Date'],
-      count: ['Count'],
-      // no resolved field in your CSV
+      count: ['Count']
+      // no resolved/outcome column in your CSV
     }
   },
 
+  // KPI configurations (only those your data supports)
   kpiConfig: {
     inbound: [
       { key: 'totalCalls', label: 'Total Calls', icon: '📞', color: '#3b82f6', format: 'number' },
@@ -55,17 +58,11 @@ export const CONFIG = {
       { key: 'totalCalls', label: 'Total Calls', icon: '📞', color: '#3b82f6', format: 'number' },
       { key: 'connectRate', label: 'Connect Rate', icon: '📈', color: '#10b981', format: 'percentage', threshold: { warning: 15, critical: 10 } },
       { key: 'avgTalkTime', label: 'Avg Talk Time', icon: '💬', color: '#8b5cf6', format: 'duration' }
-      // dropped campaignCount, not in your CSV
     ],
     fcr: [
       { key: 'totalCases', label: 'Total Cases', icon: '📝', color: '#3b82f6', format: 'number' }
-      // dropped fcrRate, escalationRate, avgResolutionTime
     ]
   },
-
-  // leave the rest of CONFIG (colors, validation, performance, etc.) unchanged
-};
-
 
   // Chart color schemes
   colorSchemes: {
@@ -84,7 +81,7 @@ export const CONFIG = {
     failed: ['failed', 'error', 'invalid', 'reject']
   },
 
-  // Date format configurations
+  // Date formats
   dateFormats: {
     display: 'MMM DD, YYYY',
     input: 'YYYY-MM-DD',
@@ -92,17 +89,14 @@ export const CONFIG = {
     api: 'YYYY-MM-DD HH:mm:ss'
   },
 
-  // Chart default configurations
+  // Chart defaults
   chartDefaults: {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: {
         position: 'bottom',
-        labels: {
-          usePointStyle: true,
-          padding: 20
-        }
+        labels: { usePointStyle: true, padding: 20 }
       },
       tooltip: {
         backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -113,136 +107,19 @@ export const CONFIG = {
       }
     },
     scales: {
-      x: {
-        grid: {
-          display: false
-        },
-        ticks: {
-          maxTicksLimit: 10
-        }
-      },
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: 'rgba(0, 0, 0, 0.1)'
-        }
-      }
+      x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
+      y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.1)' } }
     },
-    animation: {
-      duration: 750,
-      easing: 'easeInOutQuart'
-    }
-  },
-
-  // KPI configurations
-  kpiConfig: {
-    inbound: [
-      {
-        key: 'totalCalls',
-        label: 'Total Calls',
-        icon: '📞',
-        color: '#3b82f6',
-        format: 'number'
-      },
-      {
-        key: 'abandonRate',
-        label: 'Abandon Rate',
-        icon: '📉',
-        color: '#ef4444',
-        format: 'percentage',
-        threshold: { warning: 10, critical: 20 }
-      },
-      {
-        key: 'avgHandleTime',
-        label: 'Avg Handle Time',
-        icon: '⏱️',
-        color: '#10b981',
-        format: 'duration'
-      },
-      {
-        key: 'avgWaitTime',
-        label: 'Avg Wait Time',
-        icon: '⏳',
-        color: '#f59e0b',
-        format: 'duration',
-        threshold: { warning: 120, critical: 300 }
-      }
-    ],
-    outbound: [
-      {
-        key: 'totalCalls',
-        label: 'Total Calls',
-        icon: '📞',
-        color: '#3b82f6',
-        format: 'number'
-      },
-      {
-        key: 'connectRate',
-        label: 'Connect Rate',
-        icon: '📈',
-        color: '#10b981',
-        format: 'percentage',
-        threshold: { warning: 15, critical: 10 }
-      },
-      {
-        key: 'avgTalkTime',
-        label: 'Avg Talk Time',
-        icon: '💬',
-        color: '#8b5cf6',
-        format: 'duration'
-      },
-      {
-        key: 'campaignCount',
-        label: 'Active Campaigns',
-        icon: '📋',
-        color: '#06b6d4',
-        format: 'number'
-      }
-    ],
-    fcr: [
-      {
-        key: 'totalCases',
-        label: 'Total Cases',
-        icon: '📝',
-        color: '#3b82f6',
-        format: 'number'
-      },
-      {
-        key: 'fcrRate',
-        label: 'FCR Rate',
-        icon: '✅',
-        color: '#10b981',
-        format: 'percentage',
-        threshold: { warning: 70, critical: 60 }
-      },
-      {
-        key: 'avgResolutionTime',
-        label: 'Avg Resolution Time',
-        icon: '🕒',
-        color: '#f59e0b',
-        format: 'duration'
-      },
-      {
-        key: 'escalationRate',
-        label: 'Escalation Rate',
-        icon: '⚠️',
-        color: '#ef4444',
-        format: 'percentage',
-        threshold: { warning: 15, critical: 25 }
-      }
-    ]
+    animation: { duration: 750, easing: 'easeInOutQuart' }
   },
 
   // Export settings
   export: {
     formats: ['csv', 'xlsx', 'json'],
-    filename: {
-      prefix: 'call_performance_',
-      dateFormat: 'YYYYMMDD_HHmm'
-    }
+    filename: { prefix: 'call_performance_', dateFormat: 'YYYYMMDD_HHmm' }
   },
 
-  // API settings (if integrating with external APIs)
+  // API settings
   api: {
     baseUrl: '/api/v1',
     timeout: 30000,
@@ -250,11 +127,11 @@ export const CONFIG = {
     retryDelay: 1000
   },
 
-  // Performance settings
+  // Performance
   performance: {
     maxDataPoints: 10000,
     chartUpdateDebounce: 300,
-    dataRefreshInterval: 300000, // 5 minutes
+    dataRefreshInterval: 300000, // 5 min
     enableVirtualScrolling: true
   },
 
@@ -270,37 +147,25 @@ export const CONFIG = {
 
   // Validation rules
   validation: {
-    dateRange: {
-      maxDays: 365,
-      defaultDays: 30
-    },
-    fileSize: {
-      maxSizeMB: 50
-    },
-    requiredFields: {
-      inbound: [],
-      outbound: [],
-      fcr: []
-    }
+    dateRange: { maxDays: 365, defaultDays: 30 },
+    fileSize: { maxSizeMB: 50 },
+    requiredFields: { inbound: [], outbound: [], fcr: [] }
   }
 };
 
-// Utility function to get field mapping
+// Utility functions
 export function getFieldMapping(dataSource, fieldType) {
   return CONFIG.fieldMappings[dataSource]?.[fieldType] || [];
 }
 
-// Utility function to get KPI config
 export function getKPIConfig(dataSource) {
   return CONFIG.kpiConfig[dataSource] || [];
 }
 
-// Utility function to get color scheme
 export function getColorScheme(scheme = 'primary') {
   return CONFIG.colorSchemes[scheme] || CONFIG.colorSchemes.primary;
 }
 
-// Utility function to check if status matches pattern
 export function matchesStatusPattern(status, pattern) {
   if (!status) return false;
   const statusLower = String(status).toLowerCase();
