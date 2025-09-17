@@ -1,6 +1,5 @@
-// Configuration for the Call Performance Dashboard
+// config.js
 export const CONFIG = {
-  // Data sources configuration
   dataSources: {
     inbound: {
       url: "data/inbound_calls.csv",
@@ -9,7 +8,7 @@ export const CONFIG = {
       color: "#3b82f6"
     },
     outbound: {
-      url: "data/outbound_calls.csv", 
+      url: "data/outbound_calls.csv",
       name: "Outbound Calls",
       icon: "📤",
       color: "#10b981"
@@ -22,31 +21,51 @@ export const CONFIG = {
     }
   },
 
-  // Field mappings for different data sources
-  // config.js
-fieldMappings: {
-  inbound: {
-    date: ['Date/Time', 'date', 'call_date', 'datetime', 'starttime'],
-    agent: ['Agent Name', 'agent', 'agent_name', 'user', 'username'],
-    status: ['Disposition', 'status', 'call_status', 'outcome', 'disposition'],
-    duration: ['Talk Time', 'duration', 'handle_time', 'talk_time'],
-    waitTime: ['Wait Time', 'wait_time', 'queue_time', 'hold_time'],
-    count: ['count', 'calls', 'call_count', 'total_calls']
+  fieldMappings: {
+    inbound: {
+      date: ['Date/Time'],
+      agent: ['Agent Name'],
+      status: ['Disposition'],
+      duration: ['Talk Time'],
+      waitTime: ['Wait Time'],
+      count: ['Call ID'] // not really a count field, but ensures rows aren’t dropped
+    },
+    outbound: {
+      date: ['Date'],
+      agent: ['Agent'],
+      status: ['Answered Calls', 'Missed Calls', 'Voicemail Calls'],
+      duration: ['Total Call Duration'],
+      count: ['Total Calls']
+    },
+    fcr: {
+      date: ['Date'],
+      count: ['Count']
+      // no resolved field in your CSV
+    }
   },
-  outbound: {
-    date: ['Date', 'Call Date', 'datetime'],
-    agent: ['Agent', 'Agent Name', 'UserName', 'CSR', 'Owner'],
-    status: ['Answered Calls', 'Missed Calls', 'Voicemail Calls', 'status', 'call_status', 'outcome', 'disposition'],
-    duration: ['Total Call Duration', 'Outbound Call Duration', 'Inbound Call Duration', 'duration', 'talk_time', 'call_length'],
-    count: ['Total Calls', 'Outbound Calls', 'Inbound Calls', 'count', 'calls', 'call_count']
+
+  kpiConfig: {
+    inbound: [
+      { key: 'totalCalls', label: 'Total Calls', icon: '📞', color: '#3b82f6', format: 'number' },
+      { key: 'abandonRate', label: 'Abandon Rate', icon: '📉', color: '#ef4444', format: 'percentage', threshold: { warning: 10, critical: 20 } },
+      { key: 'avgHandleTime', label: 'Avg Handle Time', icon: '⏱️', color: '#10b981', format: 'duration' },
+      { key: 'avgWaitTime', label: 'Avg Wait Time', icon: '⏳', color: '#f59e0b', format: 'duration', threshold: { warning: 120, critical: 300 } }
+    ],
+    outbound: [
+      { key: 'totalCalls', label: 'Total Calls', icon: '📞', color: '#3b82f6', format: 'number' },
+      { key: 'connectRate', label: 'Connect Rate', icon: '📈', color: '#10b981', format: 'percentage', threshold: { warning: 15, critical: 10 } },
+      { key: 'avgTalkTime', label: 'Avg Talk Time', icon: '💬', color: '#8b5cf6', format: 'duration' }
+      // dropped campaignCount, not in your CSV
+    ],
+    fcr: [
+      { key: 'totalCases', label: 'Total Cases', icon: '📝', color: '#3b82f6', format: 'number' }
+      // dropped fcrRate, escalationRate, avgResolutionTime
+    ]
   },
-  fcr: {
-    date: ['Date', 'resolution_date', 'case_date'],
-    count: ['Count', 'cases', 'tickets'],
-    // No "resolved" field in your CSV — dashboard will only show total cases over time
-    resolved: ['Resolved', 'Outcome', 'fcr', 'first_contact_resolution']
-  }
-},
+
+  // leave the rest of CONFIG (colors, validation, performance, etc.) unchanged
+};
+
 
 
   // Chart color schemes

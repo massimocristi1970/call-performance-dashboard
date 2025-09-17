@@ -246,23 +246,41 @@ class DataLoader {
    * Check if a row has valid data
    */
   isValidRow(row, sourceKey) {
-    const requiredFields = CONFIG.validation.requiredFields[sourceKey] || [];
-    
-    // Check required fields
-    for (const field of requiredFields) {
-      const value = row[field];
-      if (!value || String(value).trim() === '') {
-        return false;
-      }
-    }
-
-    // Check if row has any non-empty values
-    const hasData = Object.values(row).some(value => 
-      value !== null && value !== undefined && String(value).trim() !== ''
-    );
-
-    return hasData;
+  // Special handling by dataset
+  if (sourceKey === 'inbound') {
+    // Keep all inbound rows, even if fields are blank
+    return true;
   }
+
+  if (sourceKey === 'outbound') {
+    // Keep rows if they have at least a date OR a positive Total Calls
+    const totalCalls = cleanNumber(row['Total Calls']);
+    const hasDate = !!row['Date'];
+    return hasDate || totalCalls > 0;
+  }
+
+  if (sourceKey === 'fcr') {
+    // Keep rows if Count is provided and > 0
+    const count = cleanNumber(row['Count']);
+    return count >= 0; // allow zero counts too
+  }
+
+  // Default behaviour for any future sources
+  const requiredFields = CONFIG.validation.requiredFields[sourceKey] || [];
+  for (const field of requiredFields) {
+    const value = row[field];
+    if (!value || String(value).trim() === '') {
+      return false;
+    }
+  }
+
+  const hasData = Object.values(row).some(value =>
+    value !== null && value !== undefined && String(value).trim() !== ''
+  );
+
+  return hasData;
+}
+
 
   /**
    * Get date range from processed data
