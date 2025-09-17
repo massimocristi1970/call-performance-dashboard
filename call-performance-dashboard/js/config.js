@@ -1,73 +1,54 @@
 // config.js
 export const CONFIG = {
-  // Data sources
   dataSources: {
-    inbound: {
-      url: "data/inbound_calls.csv",
-      name: "Inbound Calls",
-      icon: "📥",
-      color: "#3b82f6"
-    },
-    outbound: {
-      url: "data/outbound_calls.csv",
-      name: "Outbound Calls",
-      icon: "📤",
-      color: "#10b981"
-    },
-    fcr: {
-      url: "data/first_contact_resolution.csv",
-      name: "First Contact Resolution",
-      icon: "✅",
-      color: "#f59e0b"
-    }
+    inbound:  { url: "inbound_calls.csv",               name: "Inbound Calls",  icon: "📥", color: "#3b82f6" },
+    outbound: { url: "outbound_calls.csv",              name: "Outbound Calls", icon: "📤", color: "#10b981" },
+    fcr:      { url: "first_contact_resolution.csv",    name: "First Contact Resolution", icon: "✅", color: "#f59e0b" }
   },
 
-  // Field mappings (aligned to your CSVs)
+  // Match your exact headers
   fieldMappings: {
     inbound: {
-      date: ['Date/Time'],
-      agent: ['Agent Name'],
-      status: ['Disposition'],
-      duration: ['Talk Time'],
-      waitTime: ['Wait Time'],
-      // not a count field, but ensures presence during processing
-      count: ['Call ID']
+      date:     ["Date/Time"],
+      agent:    ["Agent Name"],
+      status:   ["Disposition"],
+      duration: ["Talk Time"],
+      waitTime: ["Wait Time"],
+      count:    ["Call ID"] // just to keep presence
     },
     outbound: {
-      date: ['Date'],
-      agent: ['Agent'],
-      // outbound is aggregated columns, not a single status field
-      // we’ll sum Answered/Missed/Voicemail separately in renderers
-      status: ['Answered Calls', 'Missed Calls', 'Voicemail Calls'],
-      duration: ['Total Call Duration'],
-      count: ['Total Calls']
+      date:     ["Date"],
+      agent:    ["Agent"],
+      status:   ["Answered Calls","Missed Calls","Voicemail Calls"], // used for charts, not a single field
+      duration: ["Total Call Duration"],
+      count:    ["Total Calls"]
     },
     fcr: {
-      // FCR has Year, Month, Date (day) + Count; we’ll build date in data-loader
-      date: ['Date'],
-      count: ['Count']
+      // FCR uses Year, Month, Date (day) + Count. date_parsed is built in data-loader.
+      date:     ["Date"],
+      count:    ["Count"]
     }
   },
 
-  // KPI configurations (only the KPIs your files actually support)
+  // Only KPIs your data can support
   kpiConfig: {
     inbound: [
-      { key: 'totalCalls',   label: 'Total Calls',      icon: '📞', color: '#3b82f6', format: 'number' },
-      { key: 'abandonRate',  label: 'Abandon Rate',     icon: '📉', color: '#ef4444', format: 'percentage', threshold: { warning: 10, critical: 20 } },
-      { key: 'avgHandleTime',label: 'Avg Handle Time',  icon: '⏱️', color: '#10b981', format: 'duration' },
-      { key: 'avgWaitTime',  label: 'Avg Wait Time',    icon: '⏳', color: '#f59e0b', format: 'duration', threshold: { warning: 120, critical: 300 } }
+      { key: 'totalCalls',    label: 'Total Calls',     icon: '📞', color: '#3b82f6', format: 'number' },
+      { key: 'abandonRate',   label: 'Abandon Rate',    icon: '📉', color: '#ef4444', format: 'percentage', threshold: { warning: 10, critical: 20 } },
+      { key: 'avgHandleTime', label: 'Avg Handle Time', icon: '⏱️', color: '#10b981', format: 'duration' },
+      { key: 'avgWaitTime',   label: 'Avg Wait Time',   icon: '⏳', color: '#f59e0b', format: 'duration', threshold: { warning: 120, critical: 300 } }
     ],
     outbound: [
-      { key: 'totalCalls',   label: 'Total Calls',      icon: '📞', color: '#3b82f6', format: 'number' },
-      { key: 'connectRate',  label: 'Connect Rate',     icon: '📈', color: '#10b981', format: 'percentage', threshold: { warning: 15, critical: 10 } },
-      { key: 'avgTalkTime',  label: 'Avg Talk Time',    icon: '💬', color: '#8b5cf6', format: 'duration' }
+      { key: 'totalCalls',    label: 'Total Calls',     icon: '📞', color: '#3b82f6', format: 'number' },
+      { key: 'connectRate',   label: 'Connect Rate',    icon: '📈', color: '#10b981', format: 'percentage', threshold: { warning: 15, critical: 10 } },
+      { key: 'avgTalkTime',   label: 'Avg Talk Time',   icon: '💬', color: '#8b5cf6', format: 'duration' }
     ],
     fcr: [
-      { key: 'totalCases',   label: 'Total Cases',      icon: '📝', color: '#3b82f6', format: 'number' }
+      { key: 'totalCases',    label: 'Total Cases',     icon: '📝', color: '#3b82f6', format: 'number' }
     ]
   },
 
-  // Chart color schemes
+  // Colours
   colorSchemes: {
     primary: ['#3b82f6', '#1d4ed8', '#1e40af', '#1e3a8a'],
     success: ['#10b981', '#059669', '#047857', '#065f46'],
@@ -76,15 +57,13 @@ export const CONFIG = {
     mixed:   ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
   },
 
-  // Status patterns (used for inbound abandon/connect detection)
   statusPatterns: {
     abandoned: ['abandon', 'missed', 'no answer', 'noanswer', 'timeout', 'hangup'],
     connected: ['connect', 'answer', 'success', 'completed', 'resolved'],
-    busy: ['busy', 'engaged'],
-    failed: ['failed', 'error', 'invalid', 'reject']
+    busy:      ['busy', 'engaged'],
+    failed:    ['failed', 'error', 'invalid', 'reject']
   },
 
-  // Date formats
   dateFormats: {
     display: 'MMM DD, YYYY',
     input:   'YYYY-MM-DD',
@@ -92,63 +71,28 @@ export const CONFIG = {
     api:     'YYYY-MM-DD HH:mm:ss'
   },
 
-  // Chart defaults
   chartDefaults: {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: {
-        position: 'bottom',
-        labels: { usePointStyle: true, padding: 20 }
-      },
-      tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        cornerRadius: 8,
-        padding: 12
-      }
+      legend:  { position: 'bottom', labels: { usePointStyle: true, padding: 20 } },
+      tooltip: { backgroundColor: 'rgba(0,0,0,0.8)', titleColor: '#fff', bodyColor: '#fff', cornerRadius: 8, padding: 12 }
     },
     scales: {
       x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
-      y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.1)' } }
+      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.1)' } }
     },
     animation: { duration: 750, easing: 'easeInOutQuart' }
   },
 
-  // Export settings
-  export: {
-    formats: ['csv', 'xlsx', 'json'],
-    filename: { prefix: 'call_performance_', dateFormat: 'YYYYMMDD_HHmm' }
-  },
+  export: { formats: ['csv','xlsx','json'], filename: { prefix: 'call_performance_', dateFormat: 'YYYYMMDD_HHmm' } },
 
-  // API settings
-  api: {
-    baseUrl: '/api/v1',
-    timeout: 30000,
-    retryAttempts: 3,
-    retryDelay: 1000
-  },
+  api: { baseUrl: '/api/v1', timeout: 30000, retryAttempts: 3, retryDelay: 1000 },
 
-  // Performance
-  performance: {
-    maxDataPoints: 10000,
-    chartUpdateDebounce: 300,
-    dataRefreshInterval: 300000, // 5 min
-    enableVirtualScrolling: true
-  },
+  performance: { maxDataPoints: 10000, chartUpdateDebounce: 300, dataRefreshInterval: 300000, enableVirtualScrolling: true },
 
-  // Features
-  features: {
-    realTimeUpdates: false,
-    dataExport: true,
-    chartInteractions: true,
-    filterPersistence: true,
-    darkMode: false,
-    notifications: true
-  },
+  features: { realTimeUpdates: false, dataExport: true, chartInteractions: true, filterPersistence: true, darkMode: false, notifications: true },
 
-  // Validation
   validation: {
     dateRange: { maxDays: 365, defaultDays: 30 },
     fileSize:  { maxSizeMB: 50 },
@@ -156,21 +100,13 @@ export const CONFIG = {
   }
 };
 
-// Helpers
-export function getFieldMapping(dataSource, fieldType) {
-  return CONFIG.fieldMappings[dataSource]?.[fieldType] || [];
-}
-export function getKPIConfig(dataSource) {
-  return CONFIG.kpiConfig[dataSource] || [];
-}
-export function getColorScheme(scheme = 'primary') {
-  return CONFIG.colorSchemes[scheme] || CONFIG.colorSchemes.primary;
-}
-export function matchesStatusPattern(status, pattern) {
-  if (!status) return false;
-  const statusLower = String(status).toLowerCase();
+export function getFieldMapping(ds, fieldType){ return CONFIG.fieldMappings[ds]?.[fieldType] || []; }
+export function getKPIConfig(ds){ return CONFIG.kpiConfig[ds] || []; }
+export function getColorScheme(scheme='primary'){ return CONFIG.colorSchemes[scheme] || CONFIG.colorSchemes.primary; }
+export function matchesStatusPattern(status, pattern){
+  if(!status) return false;
+  const s = String(status).toLowerCase();
   const patterns = CONFIG.statusPatterns[pattern] || [];
-  return patterns.some(p => statusLower.includes(p));
+  return patterns.some(p => s.includes(p));
 }
-
 export default CONFIG;

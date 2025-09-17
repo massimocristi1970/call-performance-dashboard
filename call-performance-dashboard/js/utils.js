@@ -1,135 +1,101 @@
 // utils.js
 import { CONFIG } from './config.js';
 
-/** Normalize header names for field matching */
-export function normalizeHeader(header) {
-  return String(header || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
+export function normalizeHeader(h){
+  return String(h||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
 }
 
-/** Clean and parse numbers from various formats */
-export function cleanNumber(value) {
-  if (value == null || value === '') return 0;
-  let str = String(value).trim();
-
-  // Remove weird spaces & keep digits, signs, separators and parentheses
-  str = str.replace(/[\u00A0\u202F\u2009\u2008\u2007\u2006\u2005\u2004\u2003\u2002\u2000]/g, ' ');
-  str = str.replace(/[^\d\-+,.()]/g, '');
-
-  if (!str) return 0;
-
-  // Parentheses as negative
-  if (/^\(.*\)$/.test(str)) {
-    return -cleanNumber(str.slice(1, -1));
-  }
-
-  // European format 1.234.567,89
-  if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(str)) {
-    str = str.replace(/\./g, '').replace(',', '.');
-  } else {
-    // Thousands commas
-    str = str.replace(/,(?=\d{3}(?:\.|$))/g, '');
-  }
-
-  const num = parseFloat(str);
-  return Number.isFinite(num) ? num : 0;
+export function cleanNumber(v){
+  if(v==null || v==='') return 0;
+  let s = String(v).trim();
+  s = s.replace(/[\u00A0\u202F\u2009\u2008\u2007\u2006\u2005\u2004\u2003\u2002\u2000]/g,' ');
+  s = s.replace(/[^\d\-+,.()]/g,'');
+  if(!s) return 0;
+  if(/^\(.*\)$/.test(s)) return -cleanNumber(s.slice(1,-1));
+  if(/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(s)) s = s.replace(/\./g,'').replace(',', '.');
+  else s = s.replace(/,(?=\d{3}(?:\.|$))/g,'');
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
 }
 
-/** Safe date parsing (handles ISO, DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD, and Excel serials) */
-export function parseDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+// Accepts: ISO, YYYY-MM-DD HH:mm[:ss], DD/MM/YYYY[ HH:mm[:ss]] (UK first), MM/DD/YYYY fallback, Excel serials
+export function parseDate(value){
+  if(!value) return null;
+  if(value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  const s = String(value).trim();
 
-  const str = String(value).trim();
-
-  // Excel serial dates (rough heuristic)
-  if (/^\d+(\.\d+)?$/.test(str)) {
-    const num = parseFloat(str);
-    if (num > 20000 && num < 60000) {
-      const baseDate = new Date(1899, 11, 30);
-      baseDate.setDate(baseDate.getDate() + Math.floor(num));
-      if (num % 1) baseDate.setTime(baseDate.getTime() + ((num % 1) * 86400000));
-      return baseDate;
+  // Excel serial
+  if(/^\d+(\.\d+)?$/.test(s)){
+    const num = parseFloat(s);
+    if(num>20000 && num<60000){
+      const base = new Date(1899,11,30);
+      base.setDate(base.getDate()+Math.floor(num));
+      if(num%1) base.setTime(base.getTime()+((num%1)*86400000));
+      return base;
     }
   }
 
-  // ISO / YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-    const d = new Date(str);
+  // ISO / YYYY-MM-DD with optional time
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)){
+    const d = new Date(s.replace(' ', 'T'));
     return isNaN(d.getTime()) ? null : d;
   }
 
-  // Explicit DD/MM/YYYY
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
-    const [dd, mm, yyyy] = str.split('/').map(n => parseInt(n, 10));
-    const d = new Date(yyyy, mm - 1, dd);
+  // DD/MM/YYYY with optional time
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if(m){
+    const dd = +m[1], MM = +m[2], yy = +m[3] < 100 ? 2000 + (+m[3]) : +m[3];
+    const hh = +(m[4] ?? 0), mi = +(m[5] ?? 0), ss = +(m[6] ?? 0);
+    const d  = new Date(yy, MM-1, dd, hh, mi, ss);
     return isNaN(d.getTime()) ? null : d;
   }
 
-  // 1-2 digit day/month variants with slashes or dashes → try DD/MM/YYYY then MM/DD/YYYY
-  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (m) {
-    const a = parseInt(m[1], 10), b = parseInt(m[2], 10);
-    const yyyy = parseInt(m[3], 10) < 100 ? 2000 + parseInt(m[3], 10) : parseInt(m[3], 10);
-
-    // Prefer DD/MM if unambiguous (first part > 12)
-    let d;
-    if (a > 12 && b <= 31) {
-      d = new Date(yyyy, b - 1, a);
-    } else if (b > 12 && a <= 12) {
-      d = new Date(yyyy, a - 1, b);
-    } else {
-      // Ambiguous → default to DD/MM (UK-centric)
-      d = new Date(yyyy, b - 1, a);
-    }
+  // Ambiguous d-m-y or m-d-y with dashes — prefer UK (d-m-y)
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if(m){
+    const dd = +m[1], MM = +m[2], yy = +m[3] < 100 ? 2000 + (+m[3]) : +m[3];
+    const hh = +(m[4] ?? 0), mi = +(m[5] ?? 0), ss = +(m[6] ?? 0);
+    const d  = new Date(yy, MM-1, dd, hh, mi, ss);
     return isNaN(d.getTime()) ? null : d;
   }
 
   // Fallback
-  const dflt = new Date(str);
-  return isNaN(dflt.getTime()) ? null : dflt;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
 }
 
-/** Format numbers */
-export function formatNumber(value, format = 'number') {
+export function formatNumber(value, format='number'){
   const num = cleanNumber(value);
-  switch (format) {
+  switch(format){
     case 'percentage': return `${num.toFixed(1)}%`;
-    case 'currency':   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(num);
+    case 'currency':   return new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(num);
     case 'duration':   return formatDuration(num);
-    case 'compact':    return new Intl.NumberFormat('en-GB', { notation: 'compact', compactDisplay: 'short' }).format(num);
+    case 'compact':    return new Intl.NumberFormat('en-GB',{notation:'compact',compactDisplay:'short'}).format(num);
     default:           return new Intl.NumberFormat('en-GB').format(num);
   }
 }
 
-/** Format seconds to h/m/s */
-export function formatDuration(seconds) {
-  const sec = Math.floor(seconds);
-  if (sec < 60) return `${sec}s`;
-  if (sec < 3600) {
-    const m = Math.floor(sec / 60), s = sec % 60;
-    return `${m}m ${s}s`;
-  }
-  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+export function formatDuration(seconds){
+  const s = Math.floor(seconds);
+  if(s<60) return `${s}s`;
+  if(s<3600){ const m=Math.floor(s/60), r=s%60; return `${m}m ${r}s`; }
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
   return `${h}h ${m}m`;
 }
 
-/** Format dates */
-export function formatDate(date, format = 'display') {
-  if (!date) return '';
+export function formatDate(date, fmt='display'){
+  if(!date) return '';
   const d = date instanceof Date ? date : parseDate(date);
-  if (!d) return '';
-
-  switch (format) {
+  if(!d) return '';
+  switch(fmt){
     case 'input':  return d.toISOString().split('T')[0];
-    case 'chart':  return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+    case 'chart':  return d.toLocaleDateString('en-GB',{month:'short',year:'numeric'});
     case 'api':    return d.toISOString();
     case 'display':
-    default:       return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+    default:       return d.toLocaleDateString('en-GB',{year:'numeric',month:'short',day:'numeric'});
   }
 }
+
 
 /** Simple helpers used elsewhere */
 export function findColumn(headers, candidates) {

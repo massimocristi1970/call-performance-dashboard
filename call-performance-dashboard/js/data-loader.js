@@ -1,375 +1,193 @@
 // data-loader.js
 import { CONFIG, getFieldMapping } from './config.js';
-import {
-  showError, hideError, showLoading, hideLoading, updateProgress,
-  normalizeHeader, parseDate, cleanNumber
-} from './utils.js';
+import { showError, hideError, showLoading, hideLoading, updateProgress, normalizeHeader, parseDate, cleanNumber } from './utils.js';
 
 class DataLoader {
-  constructor() {
-    this.data = {};
-    this.metadata = {};
-    this.isLoading = false;
-  }
+  constructor(){ this.data = {}; this.metadata = {}; this.isLoading = false; }
 
-  async loadAll() {
-    if (this.isLoading) return;
+  async loadAll(){
+    if(this.isLoading) return;
     this.isLoading = true;
-    hideError();
-    showLoading('Initializing data load...', 0);
+    hideError(); showLoading('Initializing data load...', 0);
 
     try {
-      const sources = Object.keys(CONFIG.dataSources);
-      const totalSources = sources.length;
-      let completed = 0;
+      const keys = Object.keys(CONFIG.dataSources);
+      let done = 0;
 
-      const results = await Promise.all(sources.map(async (key) => {
+      const results = await Promise.all(keys.map(async key => {
         try {
           const res = await this.loadDataSource(key);
-          completed++;
-          updateProgress((completed / totalSources) * 100, `Loaded ${CONFIG.dataSources[key].name}`);
+          done++; updateProgress((done/keys.length)*100, `Loaded ${CONFIG.dataSources[key].name}`);
           return { key, ...res };
-        } catch (err) {
-          console.error(`Failed to load ${key}:`, err);
-          completed++;
-          updateProgress((completed / totalSources) * 100);
-          return { key, data: [], metadata: {}, error: err.message };
+        } catch(e){
+          console.error(`Failed to load ${key}:`, e);
+          done++; updateProgress((done/keys.length)*100);
+          return { key, data: [], metadata: {}, error: e.message };
         }
       }));
 
-      let hasErrors = false;
-      results.forEach(({ key, data, metadata, error }) => {
-        if (error) {
-          hasErrors = true;
-          showError(`Failed to load ${CONFIG.dataSources[key].name}: ${error}`);
-        } else {
-          this.data[key] = data;
-          this.metadata[key] = metadata;
-        }
+      let hasErr = false;
+      results.forEach(({key, data, metadata, error}) => {
+        if(error){ hasErr = true; showError(`Failed to load ${CONFIG.dataSources[key].name}: ${error}`); }
+        this.data[key] = data;
+        this.metadata[key] = metadata;
       });
 
-      if (!hasErrors) {
-        updateProgress(100, 'Data loaded successfully!');
-        setTimeout(hideLoading, 500);
-      } else {
-        hideLoading();
-      }
+      if(!hasErr){ updateProgress(100,'Data loaded successfully!'); setTimeout(hideLoading, 500); }
+      else hideLoading();
+
       return this.data;
-
-    } catch (e) {
-      console.error('Failed to load data:', e);
-      showError('Failed to load dashboard data. Please check your data files.');
-      hideLoading();
-      throw e;
-    } finally {
-      this.isLoading = false;
-    }
+    } finally { this.isLoading = false; }
   }
 
-  async loadDataSource(sourceKey) {
-    const source = CONFIG.dataSources[sourceKey];
-    if (!source) throw new Error(`Unknown data source: ${sourceKey}`);
-
-    const resp = await fetch(source.url);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
-
+  async loadDataSource(key){
+    const src = CONFIG.dataSources[key];
+    const resp = await fetch(src.url);
+    if(!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
     const text = await resp.text();
-    if (!text.trim()) throw new Error('Empty data file');
+    if(!text.trim()) throw new Error('Empty data file');
 
-    const parsed = await this.parseCSV(text);
-    const processed = this.processData(parsed, sourceKey);
-
-    const metadata = {
-      source: source.name,
-      rowCount: processed.length,
-      columns: processed.length > 0 ? Object.keys(processed[0]) : [],
-      loadedAt: new Date().toISOString(),
-      dateRange: this.getDateRange(processed, sourceKey)
-    };
-
-    return { data: processed, metadata };
-  }
-
-  async parseCSV(text) {
-    return new Promise((resolve, reject) => {
-      Papa.parse(text, {
-        header: true,
-        skipEmptyLines: true,
-        dynamicTyping: false,
-        delimitersToGuess: [',', '\t', ';', '|'],
-        transformHeader: (h) => h.trim().replace(/^\uFEFF/, ''),
-        complete: (res) => resolve(res.data),
-        error: (err) => reject(new Error(`CSV parsing failed: ${err.message}`))
+    const parsed = await new Promise((resolve,reject)=>{
+      Papa.parse(text,{
+        header:true, skipEmptyLines:true, dynamicTyping:false, delimitersToGuess:[',','\t',';','|'],
+        transformHeader:(h)=>h.trim().replace(/^\uFEFF/,''),
+        complete:(res)=>resolve(res.data),
+        error:(err)=>reject(new Error(`CSV parsing failed: ${err.message}`))
       });
     });
+
+    const data = this.processData(parsed, key);
+    const meta = {
+      source: src.name,
+      rowCount: data.length,
+      columns: data.length? Object.keys(data[0]) : [],
+      loadedAt: new Date().toISOString(),
+      dateRange: this.getDateRange(data, key)
+    };
+    return { data, metadata: meta };
   }
 
-  processData(rawData, sourceKey) {
-    if (!rawData || rawData.length === 0) return [];
-
-    const fieldMappings = CONFIG.fieldMappings[sourceKey] || {};
+  processData(rows, key){
+    if(!rows || rows.length===0) return [];
+    const map = CONFIG.fieldMappings[key] || {};
     const out = [];
 
-    rawData.forEach((row, idx) => {
+    rows.forEach((row, i) => {
       try {
-        const processed = this.processRow(row, fieldMappings, sourceKey);
-        if (this.isValidRow(processed, sourceKey)) out.push(processed);
-      } catch (e) {
-        console.warn(`Error processing row ${idx + 1}:`, e, row);
-      }
+        const r = this.processRow(row, map, key);
+        if(this.isValidRow(r, key)) out.push(r);
+      } catch(e){ console.warn(`Row ${i+1} skipped:`, e, row); }
     });
-
     return out;
   }
 
-  processRow(row, fieldMappings, sourceKey) {
-    // Copy original with cleaned keys
-    const processed = {};
-    Object.keys(row).forEach(k => { const ck = k.trim(); if (ck) processed[ck] = row[k]; });
+  processRow(row, map, key){
+    const r = {};
+    Object.keys(row).forEach(k => { const ck = k.trim(); if(ck) r[ck] = row[k]; });
 
-    // Build date_parsed
-    // 1) FCR has Year, Month, Date (day) separate
-    if (sourceKey === 'fcr' && (row.Year || row.Month || row.Date)) {
-      const y = cleanNumber(row.Year);
-      const m = cleanNumber(row.Month);
-      const d = cleanNumber(row.Date);
-      if (y && m && d) {
-        const dt = new Date(y, m - 1, d);
-        if (!isNaN(dt.getTime())) processed.date_parsed = dt;
+    // Compose date for FCR: Year, Month, Date (day)
+    if(key==='fcr' && (row.Year || row.Month || row.Date)){
+      const y = cleanNumber(row.Year), m = cleanNumber(row.Month), d = cleanNumber(row.Date);
+      if(y && m && d){
+        const dt = new Date(y, m-1, d);
+        if(!isNaN(dt.getTime())) r.date_parsed = dt;
       }
     }
 
-    // 2) Generic date field from mapping if not already set
-    if (!processed.date_parsed) {
-      const candidates = fieldMappings.date || [];
-      const dateField = this.findBestMatch(Object.keys(processed), candidates);
-      if (dateField && processed[dateField]) {
-        const pd = parseDate(processed[dateField]);
-        if (pd) processed.date_parsed = pd;
+    // Generic date field
+    if(!r.date_parsed){
+      const dateField = this.findBestMatch(Object.keys(r), map.date || []);
+      if(dateField && r[dateField]){
+        const pd = parseDate(r[dateField]);
+        if(pd) r.date_parsed = pd;
       }
     }
 
-    // Numeric helpers for inbound (duration/waitTime)
-    ['duration', 'count', 'waitTime'].forEach(ft => {
-      const cands = fieldMappings[ft] || [];
-      const f = this.findBestMatch(Object.keys(processed), cands);
-      if (f && processed[f] !== undefined && processed[f] !== null && processed[f] !== '') {
-        processed[`${ft}_numeric`] = cleanNumber(processed[f]);
-      }
-    });
-
-    // Outbound totals (keep originals too)
-    if (sourceKey === 'outbound') {
-      processed.TotalCalls_numeric           = cleanNumber(processed['Total Calls']);
-      processed.TotalCallDuration_numeric    = cleanNumber(processed['Total Call Duration']);
-      processed.AnsweredCalls_numeric        = cleanNumber(processed['Answered Calls']);
-      processed.MissedCalls_numeric          = cleanNumber(processed['Missed Calls']);
-      processed.VoicemailCalls_numeric       = cleanNumber(processed['Voicemail Calls']);
+    // Numeric helpers
+    if(key==='inbound'){
+      const durF = this.findBestMatch(Object.keys(r), map.duration||[]);
+      const waitF= this.findBestMatch(Object.keys(r), map.waitTime||[]);
+      if(durF)  r.duration_numeric = cleanNumber(r[durF]);
+      if(waitF) r.waitTime_numeric = cleanNumber(r[waitF]);
     }
 
-    // FCR totals
-    if (sourceKey === 'fcr') {
-      processed.Count_numeric = cleanNumber(processed['Count']);
+    if(key==='outbound'){
+      r.TotalCalls_numeric        = cleanNumber(r['Total Calls']);
+      r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
+      r.AnsweredCalls_numeric     = cleanNumber(r['Answered Calls']);
+      r.MissedCalls_numeric       = cleanNumber(r['Missed Calls']);
+      r.VoicemailCalls_numeric    = cleanNumber(r['Voicemail Calls']);
     }
 
-    return processed;
+    if(key==='fcr'){
+      r.Count_numeric = cleanNumber(r['Count']);
+    }
+
+    return r;
   }
 
-  findBestMatch(headers, candidates) {
-    const normalizedHeaders = headers.map(h => ({ original: h, normalized: normalizeHeader(h) }));
-    for (const cand of candidates) {
-      const norm = normalizeHeader(cand);
-      const m = normalizedHeaders.find(h => h.normalized === norm);
-      if (m) return m.original;
+  findBestMatch(headers, candidates){
+    const norm = headers.map(h => ({orig:h, norm: normalizeHeader(h)}));
+    for(const c of candidates){
+      const nc = normalizeHeader(c);
+      const hit = norm.find(h => h.norm === nc);
+      if(hit) return hit.orig;
     }
     return null;
   }
 
-  // VERY permissive to avoid dropping valid rows
-  isValidRow(row, sourceKey) {
-    // Keep rows for these sources; we’ll handle blanks in KPIs safely.
-    if (['inbound', 'outbound', 'fcr'].includes(sourceKey)) return true;
+  // Keep everything; filtering happens later
+  isValidRow(row, key){ return true; }
 
-    const required = CONFIG.validation.requiredFields[sourceKey] || [];
-    for (const f of required) {
-      const v = row[f];
-      if (!v || String(v).trim() === '') return false;
-    }
-    return Object.values(row).some(v => v !== null && v !== undefined && String(v).trim() !== '');
-  }
-
-  getDateRange(data, sourceKey) {
-    if (!data || data.length === 0) return null;
+  getDateRange(data, key){
     const dates = [];
-
-    data.forEach(row => {
-      if (row.date_parsed) {
-        dates.push(row.date_parsed);
-      } else {
-        const dateFields = getFieldMapping(sourceKey, 'date');
-        for (const f of dateFields) {
-          if (row[f]) {
-            const d = parseDate(row[f]);
-            if (d) { dates.push(d); break; }
-          }
-        }
-      }
+    data.forEach(r => {
+      const d = r.date_parsed || null;
+      if(d) dates.push(d);
     });
+    if(dates.length===0) return null;
+    dates.sort((a,b)=>a-b);
+    return { start: dates[0], end: dates[dates.length-1], count: dates.length };
+    }
 
-    if (dates.length === 0) return null;
-    dates.sort((a, b) => a - b);
-    return { start: dates[0], end: dates[dates.length - 1], count: dates.length };
-  }
+  filterByDateRange(key, startDate, endDate){
+    const data = this.data[key] || [];
+    if(!startDate || !endDate) return data;
+    const s = parseDate(startDate), e = parseDate(endDate);
+    if(!s || !e) return data;
+    const eod = new Date(e); eod.setHours(23,59,59,999);
 
-  filterByDateRange(sourceKey, startDate, endDate) {
-    const data = this.data[sourceKey];
-    if (!data || data.length === 0) return [];
-
-    const start = parseDate(startDate);
-    const end   = parseDate(endDate);
-    if (!start || !end) return data;
-
-    const endOfDay = new Date(end); endOfDay.setHours(23,59,59,999);
-
-    return data.filter(row => {
-      let rd = row.date_parsed;
-      if (!rd) {
-        const dateFields = getFieldMapping(sourceKey, 'date');
-        for (const f of dateFields) {
-          if (row[f]) { rd = parseDate(row[f]); if (rd) break; }
-        }
-      }
-      if (!rd) return false; // exclude rows with no valid date so filtering works
-      return rd >= start && rd <= endOfDay;
+    return data.filter(r => {
+      const d = r.date_parsed;
+      return d && d >= s && d <= eod;
     });
   }
 
-  getData(sourceKey, filters = {}) {
-    if (!this.data[sourceKey]) return [];
-    let data = [...this.data[sourceKey]];
+  getData(key, filters={}){
+    let data = [...(this.data[key] || [])];
 
-    if (filters.startDate && filters.endDate) {
-      data = this.filterByDateRange(sourceKey, filters.startDate, filters.endDate);
+    if(filters.startDate && filters.endDate){
+      data = this.filterByDateRange(key, filters.startDate, filters.endDate);
     }
 
-    if (filters.agent) {
-      const agentFields = getFieldMapping(sourceKey, 'agent');
-      data = data.filter(row => {
-        for (const f of agentFields) {
-          if (row[f] && String(row[f]).toLowerCase().includes(filters.agent.toLowerCase())) return true;
-        }
-        return false;
-      });
+    if(filters.agent){
+      const fields = getFieldMapping(key, 'agent');
+      const q = filters.agent.toLowerCase();
+      data = data.filter(r => fields.some(f => r[f] && String(r[f]).toLowerCase().includes(q)));
     }
 
-    if (filters.status) {
-      const statusFields = getFieldMapping(sourceKey, 'status');
-      data = data.filter(row => {
-        for (const f of statusFields) {
-          if (row[f] && String(row[f]).toLowerCase().includes(filters.status.toLowerCase())) return true;
-        }
-        return false;
-      });
+    if(filters.status){
+      const fields = getFieldMapping(key, 'status');
+      const q = filters.status.toLowerCase();
+      data = data.filter(r => fields.some(f => r[f] && String(r[f]).toLowerCase().includes(q)));
     }
 
     return data;
   }
 
-  getMetadata(sourceKey) {
-    return this.metadata[sourceKey] || {};
-  }
-
-  async refresh(sourceKey) {
-    if (!CONFIG.dataSources[sourceKey]) throw new Error(`Unknown data source: ${sourceKey}`);
-    showLoading(`Refreshing ${CONFIG.dataSources[sourceKey].name}...`, 0);
-    try {
-      const res = await this.loadDataSource(sourceKey);
-      this.data[sourceKey] = res.data;
-      this.metadata[sourceKey] = res.metadata;
-      updateProgress(100, 'Refresh complete!');
-      setTimeout(hideLoading, 500);
-      return res.data;
-    } catch (e) {
-      hideLoading();
-      showError(`Failed to refresh ${CONFIG.dataSources[sourceKey].name}: ${e.message}`);
-      throw e;
-    }
-  }
-
-  clear() { this.data = {}; this.metadata = {}; }
-
-  getSummary(sourceKey) {
-    const data = this.data[sourceKey];
-    const metadata = this.metadata[sourceKey];
-    if (!data || data.length === 0) {
-      return { totalRows: 0, dateRange: null, columns: [], lastUpdated: null };
-    }
-    return {
-      totalRows: data.length,
-      dateRange: metadata?.dateRange || null,
-      columns: metadata?.columns || [],
-      lastUpdated: metadata?.loadedAt || null
-    };
-  }
-
-  validateData(sourceKey) {
-    const data = this.data[sourceKey];
-    if (!data) return { valid: false, errors: ['No data loaded'] };
-    const errors = [], warnings = [];
-
-    if (data.length === 0) errors.push('No data rows found');
-
-    const requiredFields = CONFIG.validation.requiredFields[sourceKey] || [];
-    const sample = data[0] || {};
-    const available = Object.keys(sample);
-    requiredFields.forEach(field => {
-      const maps = getFieldMapping(sourceKey, field);
-      const hasField = maps.some(m => this.findBestMatch(available, [m]));
-      if (!hasField) errors.push(`Missing required field: ${field}`);
-    });
-
-    const dateRange = this.metadata[sourceKey]?.dateRange;
-    if (dateRange) {
-      const days = (dateRange.end - dateRange.start) / 86400000;
-      if (days > 730) warnings.push('Data spans > 2 years - consider filtering for performance');
-    }
-
-    return { valid: errors.length === 0, errors, warnings };
-  }
-
-  findDuplicateRows(data) {
-    const seen = new Set(); let dup = 0;
-    data.forEach(row => {
-      const key = JSON.stringify(row);
-      if (seen.has(key)) dup++; else seen.add(key);
-    });
-    return dup;
-  }
-
-  getFieldStats(sourceKey, fieldName) {
-    const data = this.data[sourceKey];
-    if (!data || data.length === 0) return null;
-    const vals = data.map(r => r[fieldName]).filter(v => v !== null && v !== undefined && v !== '');
-    if (vals.length === 0) return null;
-
-    const nums = vals.map(v => cleanNumber(v)).filter(n => Number.isFinite(n));
-    if (nums.length > vals.length * 0.8) {
-      return {
-        type: 'numeric',
-        count: vals.length,
-        min: Math.min(...nums),
-        max: Math.max(...nums),
-        avg: nums.reduce((a,b)=>a+b,0)/nums.length,
-        nullCount: data.length - vals.length
-      };
-    } else {
-      const unique = [...new Set(vals)];
-      const top = {};
-      vals.forEach(v => { top[v] = (top[v] || 0) + 1; });
-      const topValues = Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([value,count])=>({value,count}));
-      return { type:'text', count: vals.length, uniqueCount: unique.length, nullCount: data.length - vals.length, topValues };
-    }
-  }
+  getMetadata(key){ return this.metadata[key] || {}; }
+  async refresh(key){ /* unchanged */ }
+  clear(){ this.data = {}; this.metadata = {}; }
 }
 
 export const dataLoader = new DataLoader();
