@@ -180,5 +180,22 @@ class DataLoader {
   clear(){ this.data = {}; this.metadata = {}; }
 }
 
+getSummary(sourceKey) {
+  const data = this.data[sourceKey] || [];
+  const dateRange = (() => {
+    const dates = data.map(r => r.date_parsed).filter(Boolean).sort((a,b)=>a-b);
+    if (!dates.length) return null;
+    return { start: dates[0], end: dates[dates.length-1], count: dates.length };
+  })();
+  const columns = data.length ? Object.keys(data[0]) : [];
+  return {
+    source: CONFIG.dataSources[sourceKey]?.name || sourceKey,
+    rowCount: data.length,
+    columns,
+    dateRange,
+    loadedAt: this.metadata[sourceKey]?.loadedAt || null,
+  };
+}
+
 export const dataLoader = new DataLoader();
 export default dataLoader;

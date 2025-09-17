@@ -107,33 +107,49 @@ class PageRenderer {
     chartManager.createAgentChart(idC, data, getFieldMapping(pageKey,'agent')[0] || 'Agent Name');
   }
 
-  calculateKPIs(pageKey, data){
-    const out = {};
+  calculateKPIs(pageKey, data) {
+  const out = {};
 
-    if(pageKey==='inbound'){
-      const total = data.length;
-      const abandoned = data.filter(r => isAbandoned(r.Disposition)).length;
-      out.totalCalls    = total;
-      out.abandonRate   = total ? (abandoned/total)*100 : 0;
-      out.avgHandleTime = this.avg(data, 'Talk Time');
-      out.avgWaitTime   = this.avg(data, 'Wait Time');
-    }
+  if (pageKey === 'inbound') {
+    const total = data.length;
+    const abandoned = data.filter(r => isAbandoned(r.Disposition || '')).length;
 
-    if(pageKey==='outbound'){
-      const total    = data.reduce((s,r)=>s+cleanNumber(r.TotalCalls_numeric),0);
-      const answered = data.reduce((s,r)=>s+cleanNumber(r.AnsweredCalls_numeric),0);
-      const duration = data.reduce((s,r)=>s+cleanNumber(r.TotalCallDuration_numeric),0);
-      out.totalCalls  = total;
-      out.connectRate = total ? (answered/total)*100 : 0;
-      out.avgTalkTime = total ? (duration/total) : 0;
-    }
+    out.totalCalls  = total;
+    out.abandonRate = total > 0 ? (abandoned / total) * 100 : 0;
 
-    if(pageKey==='fcr'){
-      out.totalCases = data.reduce((s,r)=>s+cleanNumber(r.Count_numeric),0);
-    }
+    // Prefer pre-parsed numeric helpers if present; fall back to raw columns
+    const avgHandleFromNumeric = this.avg(data, 'duration_numeric');
+    const avgHandleFromRaw     = this.avg(data, 'Talk Time');
+    out.avgHandleTime = avgHandleFromNumeric || avgHandleFromRaw || 0;
 
-    return out;
+    const avgWaitFromNumeric = this.avg(data, 'waitTime_numeric');
+    const avgWaitFromRaw     = this.avg(data, 'Wait Time');
+    out.avgWaitTime = avgWaitFromNumeric || avgWaitFromRaw || 0;
   }
+
+  if (pageKey === 'outbound') {
+    // Sum from numeric helper fields if present; fall back to raw headers
+    const total    = data.reduce((s, r) =>
+      s + (Number.isFinite(r.TotalCalls_numeric) ? r.TotalCalls_numeric : cleanNumber(r['Total Calls'])), 0);
+    const answered = data.reduce((s, r) =>
+      s + (Number.isFinite(r.AnsweredCalls_numeric) ? r.AnsweredCalls_numeric : cleanNumber(r['Answered Calls'])), 0);
+    const duration = data.reduce((s, r) =>
+      s + (Number.isFinite(r.TotalCallDuration_numeric) ? r.TotalCallDuration_numeric : cleanNumber(r['Total Call Duration'])), 0);
+
+    out.totalCalls  = total;
+    out.connectRate = total > 0 ? (answered / total) * 100 : 0;
+    out.avgTalkTime = total > 0 ? (duration / total) : 0;
+  }
+
+  if (pageKey === 'fcr') {
+    const totalCases = data.reduce((s, r) =>
+      s + (Number.isFinite(r.Count_numeric) ? r.Count_numeric : cleanNumber(r['Count'])), 0);
+    out.totalCases = totalCases;
+  }
+
+  return out;
+}
+
 
   avg(data, field){
     const nums = data.map(r => cleanNumber(r[field])).filter(n => n>=0);

@@ -1,9 +1,10 @@
 // Main application module
+// js/main.js
 import { CONFIG } from './config.js';
-import { 
-  showError, 
-  hideError, 
-  validateDateRange, 
+import {
+  showError,
+  hideError,
+  validateDateRange,
   getDefaultDateRange,
   exportToCsv,
   debounce
@@ -11,6 +12,12 @@ import {
 import dataLoader from './data-loader.js';
 import chartManager from './chart-manager.js';
 import pageRenderer from './renderers.js';
+
+// Expose for DevTools debugging
+window.CONFIG = CONFIG;
+window.dataLoader = dataLoader;
+window.pageRenderer = pageRenderer;
+
 
 class Dashboard {
   constructor() {
