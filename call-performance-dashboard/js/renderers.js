@@ -1,4 +1,4 @@
-// js/renderers.js - Corrected version
+// js/renderers.js - Final Fix
 import { CONFIG, getKPIConfig, getFieldMapping } from './config.js';
 import { formatNumber, isAbandoned, cleanNumber } from './utils.js';
 import dataLoader from './data-loader.js';
@@ -9,27 +9,46 @@ class PageRenderer {
   updateFilters(filters) { this.currentFilters = { ...filters }; }
 
   async renderPage(pageKey, containerId){
-    // Apply current filters to all datasets
+    console.log(`\n=== RENDERING ${pageKey.toUpperCase()} PAGE ===`);
+    
+    // Get data using current filters
     let data = dataLoader.getData(pageKey, this.currentFilters || {});
+    console.log(`Data for rendering ${pageKey}:`, data.length, 'rows');
 
     const container = document.getElementById(containerId);
-    if(!container) return;
-
-    if(!data || data.length===0){
-      container.innerHTML = document.getElementById('no-data-template').innerHTML;
+    if(!container) {
+      console.error(`Container ${containerId} not found`);
       return;
     }
 
+    if(!data || data.length === 0){
+      console.log(`No data for ${pageKey}, showing no-data template`);
+      const noDataTemplate = document.getElementById('no-data-template');
+      if (noDataTemplate) {
+        container.innerHTML = noDataTemplate.innerHTML;
+      } else {
+        container.innerHTML = '<div class="no-data-state"><h3>No Data Available</h3><p>No data found for the selected period.</p></div>';
+      }
+      return;
+    }
+
+    console.log(`Rendering ${pageKey} with ${data.length} rows`);
     container.innerHTML = `<div class="kpis-grid"></div><div class="charts-grid"></div>`;
 
     // KPIs
     const kpiGrid = container.querySelector('.kpis-grid');
     const defs = getKPIConfig(pageKey);
     const kpis = this.calculateKPIs(pageKey, data);
+    console.log(`KPIs for ${pageKey}:`, kpis);
 
     defs.forEach(def => {
       if(!(def.key in kpis)) return;
       const tpl = document.getElementById('kpi-template');
+      if (!tpl) {
+        console.error('KPI template not found');
+        return;
+      }
+      
       const node = tpl.content.cloneNode(true);
       const card = node.querySelector('.kpi-card');
 
@@ -55,9 +74,14 @@ class PageRenderer {
     const grid = container.querySelector('.charts-grid');
 
     if (pageKey === 'fcr') {
+      console.log('Rendering FCR charts...');
       const id = `${pageKey}-cases-over-time`;
       grid.appendChild(this.chartWrap('Cases Over Time', id));
-      const valueField = ('Count_numeric' in data[0]) ? 'Count_numeric' : 'Count';
+      
+      // Use Count_numeric if available, otherwise Count
+      const valueField = data[0] && 'Count_numeric' in data[0] ? 'Count_numeric' : 'Count';
+      console.log(`Using ${valueField} for FCR chart`);
+      
       chartManager.createCallsOverTimeChart(id, data, {
         dateField: '__chartDate',
         valueField,
@@ -67,6 +91,10 @@ class PageRenderer {
     }
 
     if (pageKey === 'outbound') {
+      console.log('Rendering outbound charts...');
+      console.log('Sample outbound data:', data[0]);
+      
+      // Chart 1: Outbound calls over time
       const id1 = `${pageKey}-calls-over-time`;
       grid.appendChild(this.chartWrap('Outbound Calls Over Time', id1));
       chartManager.createCallsOverTimeChart(id1, data, {
@@ -75,31 +103,54 @@ class PageRenderer {
         color: CONFIG.dataSources[pageKey].color
       });
 
+      // Chart 2: Call outcomes
       const id2 = `${pageKey}-outcomes`;
       grid.appendChild(this.chartWrap('Call Outcomes', id2));
-      const answered = data.reduce((s, r) => s + cleanNumber(r.AnsweredCalls_numeric), 0);
-      const missed   = data.reduce((s, r) => s + cleanNumber(r.MissedCalls_numeric), 0);
-      const vm       = data.reduce((s, r) => s + cleanNumber(r.VoicemailCalls_numeric), 0);
+      const answered = data.reduce((s, r) => s + (cleanNumber(r.AnsweredCalls_numeric) || 0), 0);
+      const missed   = data.reduce((s, r) => s + (cleanNumber(r.MissedCalls_numeric) || 0), 0);
+      const vm       = data.reduce((s, r) => s + (cleanNumber(r.VoicemailCalls_numeric) || 0), 0);
+      
+      console.log('Outbound outcomes:', { answered, missed, vm });
+      
       chartManager.createDoughnutChart(id2, data, {
         labels: ['Answered', 'Missed', 'Voicemail'],
         data: [answered, missed, vm]
       });
 
+      // Chart 3: Calls per agent
       const byAgent = {};
       data.forEach(r => {
-        const a = r.Agent || r['Agent'];
-        if (!a) return;
-        byAgent[a] = (byAgent[a] || 0) + cleanNumber(r.TotalCalls_numeric);
+        const agent = r.Agent || 'Unknown';
+        if (agent && agent !== 'Unknown') {
+          const calls = cleanNumber(r.TotalCalls_numeric) || 0;
+          byAgent[agent] = (byAgent[agent] || 0) + calls;
+        }
       });
-      const labels = Object.keys(byAgent).sort((a, b) => byAgent[b] - byAgent[a]).slice(0, 10);
-      const vals   = labels.map(l => byAgent[l]);
-      const id3 = `${pageKey}-agent`;
-      grid.appendChild(this.chartWrap('Calls per Agent', id3));
-      chartManager.createBarChart(id3, data, { labels, data: vals, label: 'Total Calls', multiColor: true });
+      
+      const sortedAgents = Object.entries(byAgent)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+      
+      const labels = sortedAgents.map(([agent]) => agent);
+      const vals = sortedAgents.map(([, calls]) => calls);
+      
+      console.log('Agent data:', { byAgent, labels, vals });
+      
+      if (labels.length > 0) {
+        const id3 = `${pageKey}-agent`;
+        grid.appendChild(this.chartWrap('Calls per Agent', id3));
+        chartManager.createBarChart(id3, data, { 
+          labels, 
+          data: vals, 
+          label: 'Total Calls', 
+          multiColor: true 
+        });
+      }
       return;
     }
 
     // Inbound - keep exactly the same
+    console.log('Rendering inbound charts...');
     const idA = `${pageKey}-calls-over-time`;
     grid.appendChild(this.chartWrap('Inbound Calls Over Time', idA));
     chartManager.createCallsOverTimeChart(idA, data, {
@@ -118,6 +169,7 @@ class PageRenderer {
 
   calculateKPIs(pageKey, data) {
     const out = {};
+    console.log(`Calculating KPIs for ${pageKey} with ${data.length} rows`);
 
     if (pageKey === 'inbound') {
       const total = data.length;
@@ -136,36 +188,55 @@ class PageRenderer {
     }
 
     if (pageKey === 'outbound') {
-      const total    = data.reduce((s, r) =>
-        s + (Number.isFinite(r.TotalCalls_numeric) ? r.TotalCalls_numeric : cleanNumber(r['Total Calls'])), 0);
-      const answered = data.reduce((s, r) =>
-        s + (Number.isFinite(r.AnsweredCalls_numeric) ? r.AnsweredCalls_numeric : cleanNumber(r['Answered Calls'])), 0);
-      const duration = data.reduce((s, r) =>
-        s + (Number.isFinite(r.TotalCallDuration_numeric) ? r.TotalCallDuration_numeric : cleanNumber(r['Total Call Duration'])), 0);
+      const total = data.reduce((s, r) => {
+        const calls = cleanNumber(r.TotalCalls_numeric) || cleanNumber(r['Total Calls']) || 0;
+        return s + calls;
+      }, 0);
+      
+      const answered = data.reduce((s, r) => {
+        const calls = cleanNumber(r.AnsweredCalls_numeric) || cleanNumber(r['Answered Calls']) || 0;
+        return s + calls;
+      }, 0);
+      
+      const duration = data.reduce((s, r) => {
+        const dur = cleanNumber(r.TotalCallDuration_numeric) || cleanNumber(r['Total Call Duration']) || 0;
+        return s + dur;
+      }, 0);
 
-      out.totalCalls  = total;
+      out.totalCalls = total;
       out.connectRate = total > 0 ? (answered / total) * 100 : 0;
-      out.avgTalkTime = total > 0 ? (duration / total) : 0;
+      out.avgTalkTime = answered > 0 ? (duration / answered) : 0;
+      
+      console.log('Outbound KPIs calculated:', out);
     }
 
     if (pageKey === 'fcr') {
-      const totalCases = data.reduce((s, r) =>
-        s + (Number.isFinite(r.Count_numeric) ? r.Count_numeric : cleanNumber(r['Count'])), 0);
+      const totalCases = data.reduce((s, r) => {
+        const count = cleanNumber(r.Count_numeric) || cleanNumber(r.Count) || 0;
+        return s + count;
+      }, 0);
+      
       out.totalCases = totalCases;
+      console.log('FCR KPIs calculated:', out);
     }
 
     return out;
   }
 
   avg(data, field){
-    const nums = data.map(r => cleanNumber(r[field])).filter(n => n >= 0);
+    const nums = data.map(r => cleanNumber(r[field])).filter(n => Number.isFinite(n) && n >= 0);
     if(nums.length === 0) return 0;
     return nums.reduce((a,b)=>a+b,0)/nums.length;
   }
 
   chartWrap(title, id){
-    const t = document.getElementById('chart-template');
-    const node = t.content.cloneNode(true);
+    const tpl = document.getElementById('chart-template');
+    if (!tpl) {
+      console.error('Chart template not found');
+      return document.createElement('div');
+    }
+    
+    const node = tpl.content.cloneNode(true);
     node.querySelector('.chart-title').textContent = title;
     node.querySelector('canvas').id = id;
     return node;
