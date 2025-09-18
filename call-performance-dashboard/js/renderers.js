@@ -1,4 +1,4 @@
-// js/renderers.js - Final Fix
+// js/renderers.js - Final Fix with DOM timing
 import { CONFIG, getKPIConfig, getFieldMapping } from './config.js';
 import { formatNumber, isAbandoned, cleanNumber } from './utils.js';
 import dataLoader from './data-loader.js';
@@ -70,52 +70,56 @@ class PageRenderer {
       kpiGrid.appendChild(node);
     });
 
-    // Charts
+    // Charts - with proper DOM setup and timing
     const grid = container.querySelector('.charts-grid');
+    
+    // Force layout recalculation
+    container.offsetHeight;
+    
+    // Use setTimeout to ensure DOM is fully rendered before creating charts
+    setTimeout(() => {
+      this.createChartsForPage(pageKey, grid, data);
+    }, 100);
+  }
+
+  async createChartsForPage(pageKey, grid, data) {
+    console.log(`Creating charts for ${pageKey}`);
 
     if (pageKey === 'fcr') {
-      console.log('Rendering FCR charts...');
-      const id = `${pageKey}-cases-over-time`;
-      grid.appendChild(this.chartWrap('Cases Over Time', id));
+      console.log('Setting up FCR charts...');
       
-      // Use Count_numeric if available, otherwise Count
-      const valueField = data[0] && 'Count_numeric' in data[0] ? 'Count_numeric' : 'Count';
-      console.log(`Using ${valueField} for FCR chart`);
+      const chartWrapper = this.createChartWrapper('Cases Over Time', `${pageKey}-cases-over-time`);
+      grid.appendChild(chartWrapper);
       
-      chartManager.createCallsOverTimeChart(id, data, {
-        dateField: '__chartDate',
-        valueField,
-        color: CONFIG.dataSources[pageKey].color
-      });
+      // Force layout and ensure proper sizing
+      this.ensureChartContainerSize(chartWrapper);
+      
+      setTimeout(() => {
+        const valueField = data[0] && 'Count_numeric' in data[0] ? 'Count_numeric' : 'Count';
+        console.log(`Using ${valueField} for FCR chart`);
+        
+        chartManager.createCallsOverTimeChart(`${pageKey}-cases-over-time`, data, {
+          dateField: '__chartDate',
+          valueField,
+          color: CONFIG.dataSources[pageKey].color
+        });
+      }, 200);
       return;
     }
 
     if (pageKey === 'outbound') {
-      console.log('Rendering outbound charts...');
+      console.log('Setting up outbound charts...');
       console.log('Sample outbound data:', data[0]);
       
       // Chart 1: Outbound calls over time
-      const id1 = `${pageKey}-calls-over-time`;
-      grid.appendChild(this.chartWrap('Outbound Calls Over Time', id1));
-      chartManager.createCallsOverTimeChart(id1, data, {
-        dateField: '__chartDate',
-        valueField: 'TotalCalls_numeric',
-        color: CONFIG.dataSources[pageKey].color
-      });
-
+      const chartWrapper1 = this.createChartWrapper('Outbound Calls Over Time', `${pageKey}-calls-over-time`);
+      grid.appendChild(chartWrapper1);
+      this.ensureChartContainerSize(chartWrapper1);
+      
       // Chart 2: Call outcomes
-      const id2 = `${pageKey}-outcomes`;
-      grid.appendChild(this.chartWrap('Call Outcomes', id2));
-      const answered = data.reduce((s, r) => s + (cleanNumber(r.AnsweredCalls_numeric) || 0), 0);
-      const missed   = data.reduce((s, r) => s + (cleanNumber(r.MissedCalls_numeric) || 0), 0);
-      const vm       = data.reduce((s, r) => s + (cleanNumber(r.VoicemailCalls_numeric) || 0), 0);
-      
-      console.log('Outbound outcomes:', { answered, missed, vm });
-      
-      chartManager.createDoughnutChart(id2, data, {
-        labels: ['Answered', 'Missed', 'Voicemail'],
-        data: [answered, missed, vm]
-      });
+      const chartWrapper2 = this.createChartWrapper('Call Outcomes', `${pageKey}-outcomes`);
+      grid.appendChild(chartWrapper2);
+      this.ensureChartContainerSize(chartWrapper2);
 
       // Chart 3: Calls per agent
       const byAgent = {};
@@ -134,37 +138,124 @@ class PageRenderer {
       const labels = sortedAgents.map(([agent]) => agent);
       const vals = sortedAgents.map(([, calls]) => calls);
       
-      console.log('Agent data:', { byAgent, labels, vals });
-      
       if (labels.length > 0) {
-        const id3 = `${pageKey}-agent`;
-        grid.appendChild(this.chartWrap('Calls per Agent', id3));
-        chartManager.createBarChart(id3, data, { 
-          labels, 
-          data: vals, 
-          label: 'Total Calls', 
-          multiColor: true 
+        const chartWrapper3 = this.createChartWrapper('Calls per Agent', `${pageKey}-agent`);
+        grid.appendChild(chartWrapper3);
+        this.ensureChartContainerSize(chartWrapper3);
+      }
+      
+      // Create charts with delays to ensure DOM is ready
+      setTimeout(() => {
+        chartManager.createCallsOverTimeChart(`${pageKey}-calls-over-time`, data, {
+          dateField: '__chartDate',
+          valueField: 'TotalCalls_numeric',
+          color: CONFIG.dataSources[pageKey].color
         });
+      }, 200);
+
+      setTimeout(() => {
+        const answered = data.reduce((s, r) => s + (cleanNumber(r.AnsweredCalls_numeric) || 0), 0);
+        const missed   = data.reduce((s, r) => s + (cleanNumber(r.MissedCalls_numeric) || 0), 0);
+        const vm       = data.reduce((s, r) => s + (cleanNumber(r.VoicemailCalls_numeric) || 0), 0);
+        
+        console.log('Outbound outcomes:', { answered, missed, vm });
+        
+        chartManager.createDoughnutChart(`${pageKey}-outcomes`, data, {
+          labels: ['Answered', 'Missed', 'Voicemail'],
+          data: [answered, missed, vm]
+        });
+      }, 400);
+
+      if (labels.length > 0) {
+        setTimeout(() => {
+          console.log('Agent data:', { labels, vals });
+          chartManager.createBarChart(`${pageKey}-agent`, data, { 
+            labels, 
+            data: vals, 
+            label: 'Total Calls', 
+            multiColor: true 
+          });
+        }, 600);
       }
       return;
     }
 
-    // Inbound - keep exactly the same
-    console.log('Rendering inbound charts...');
-    const idA = `${pageKey}-calls-over-time`;
-    grid.appendChild(this.chartWrap('Inbound Calls Over Time', idA));
-    chartManager.createCallsOverTimeChart(idA, data, {
-      dateField: '__chartDate',
-      color: CONFIG.dataSources[pageKey].color
-    });
+    // Inbound - keep exactly the same but with timing
+    console.log('Setting up inbound charts...');
+    
+    const chartWrapper1 = this.createChartWrapper('Inbound Calls Over Time', `${pageKey}-calls-over-time`);
+    const chartWrapper2 = this.createChartWrapper('Status Distribution', `${pageKey}-status`);
+    const chartWrapper3 = this.createChartWrapper('Top Agents', `${pageKey}-agent`);
+    
+    grid.appendChild(chartWrapper1);
+    grid.appendChild(chartWrapper2);
+    grid.appendChild(chartWrapper3);
+    
+    this.ensureChartContainerSize(chartWrapper1);
+    this.ensureChartContainerSize(chartWrapper2);
+    this.ensureChartContainerSize(chartWrapper3);
 
-    const idB = `${pageKey}-status`;
-    grid.appendChild(this.chartWrap('Status Distribution', idB));
-    chartManager.createStatusChart(idB, data, getFieldMapping(pageKey,'status')[0] || 'Disposition');
+    setTimeout(() => {
+      chartManager.createCallsOverTimeChart(`${pageKey}-calls-over-time`, data, {
+        dateField: '__chartDate',
+        color: CONFIG.dataSources[pageKey].color
+      });
+    }, 200);
 
-    const idC = `${pageKey}-agent`;
-    grid.appendChild(this.chartWrap('Top Agents', idC));
-    chartManager.createAgentChart(idC, data, getFieldMapping(pageKey,'agent')[0] || 'Agent Name');
+    setTimeout(() => {
+      chartManager.createStatusChart(`${pageKey}-status`, data, getFieldMapping(pageKey,'status')[0] || 'Disposition');
+    }, 400);
+
+    setTimeout(() => {
+      chartManager.createAgentChart(`${pageKey}-agent`, data, getFieldMapping(pageKey,'agent')[0] || 'Agent Name');
+    }, 600);
+  }
+
+  createChartWrapper(title, canvasId) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chart-card';
+    wrapper.innerHTML = `
+      <div class="chart-header">
+        <h3 class="chart-title">${title}</h3>
+        <div class="chart-actions">
+          <button class="chart-action" data-action="fullscreen" title="Fullscreen">
+            <span>⛶</span>
+          </button>
+          <button class="chart-action" data-action="download" title="Download Chart">
+            <span>💾</span>
+          </button>
+        </div>
+      </div>
+      <div class="chart-container" style="height: 300px; min-height: 300px; position: relative;">
+        <canvas class="chart-canvas" id="${canvasId}" style="width: 100% !important; height: 100% !important; min-height: 250px !important;"></canvas>
+      </div>
+    `;
+    return wrapper;
+  }
+
+  ensureChartContainerSize(wrapper) {
+    const container = wrapper.querySelector('.chart-container');
+    const canvas = wrapper.querySelector('.chart-canvas');
+    
+    if (container && canvas) {
+      // Force explicit sizing
+      container.style.height = '300px';
+      container.style.minHeight = '300px';
+      container.style.position = 'relative';
+      
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      canvas.style.minHeight = '250px';
+      
+      // Force layout recalculation
+      container.offsetHeight;
+      canvas.offsetHeight;
+      
+      console.log(`Ensured size for container:`, {
+        containerSize: { width: container.offsetWidth, height: container.offsetHeight },
+        canvasSize: { width: canvas.offsetWidth, height: canvas.offsetHeight }
+      });
+    }
   }
 
   calculateKPIs(pageKey, data) {
@@ -227,19 +318,6 @@ class PageRenderer {
     const nums = data.map(r => cleanNumber(r[field])).filter(n => Number.isFinite(n) && n >= 0);
     if(nums.length === 0) return 0;
     return nums.reduce((a,b)=>a+b,0)/nums.length;
-  }
-
-  chartWrap(title, id){
-    const tpl = document.getElementById('chart-template');
-    if (!tpl) {
-      console.error('Chart template not found');
-      return document.createElement('div');
-    }
-    
-    const node = tpl.content.cloneNode(true);
-    node.querySelector('.chart-title').textContent = title;
-    node.querySelector('canvas').id = id;
-    return node;
   }
 
   async renderInbound(){ return this.renderPage('inbound','inbound-content'); }
