@@ -125,55 +125,40 @@ class DataLoader {
 
     // ----- FCR -----
     if (sourceKey === 'fcr') {
-      const yearField = this.findBestMatch(Object.keys(r), ['Year']);
-      const monthField = this.findBestMatch(Object.keys(r), ['Month']);
-      const dayField = this.findBestMatch(Object.keys(r), ['Date','Day']);
-      const countField = this.findBestMatch(Object.keys(r), getFieldMapping('fcr','count') || ['Count','Cases']);
-
-      const year = yearField ? cleanNumber(r[yearField]) : 0;
-      const month = monthField ? cleanNumber(r[monthField]) : 0;
-      const day = dayField ? cleanNumber(r[dayField]) : 0;
+      const year = cleanNumber(r.Year);
+      const month = cleanNumber(r.Month);
+      const day = cleanNumber(r.Date);
 
       if (year > 1900) {
         let dt = null;
-        if (month >= 1 && day >= 1) {
+        if (!isNaN(month) && month >= 1 && !isNaN(day) && day >= 1) {
           dt = new Date(year, month - 1, day);
         } else {
-          dt = new Date(year, 0, 1); // fallback to Jan 1
+          // fallback to Jan 1 if Month/Date missing or "Total"
+          dt = new Date(year, 0, 1);
         }
-        if (!isNaN(dt)) {
-          r.date_parsed = dt;
-          r.__chartDate = dt.toISOString().split('T')[0];
-        }
+        r.date_parsed = dt;
+        r.__chartDate = dt.toISOString().split('T')[0];
       }
-      r.Count_numeric = countField ? cleanNumber(r[countField]) : 0;
+
+      r.Count_numeric = cleanNumber(r.Count);
     }
 
     // ----- OUTBOUND -----
     if (sourceKey === 'outbound') {
-      const dateField = this.findBestMatch(Object.keys(r), map.date || ['Date']);
-      if (dateField && r[dateField]) {
-        const pd = parseDate(r[dateField]);
+      if (r.Date) {
+        const pd = parseDate(r.Date);
         if (pd) {
           r.date_parsed = pd;
           r.__chartDate = pd.toISOString().split('T')[0];
         }
       }
 
-      const agentField = this.findBestMatch(Object.keys(r), map.agent || ['Agent','Agent Name','User']);
-      if (agentField && !r.Agent) r.Agent = r[agentField];
-
-      const totalField   = this.findBestMatch(Object.keys(r), map.count || ['Total Calls','Calls']);
-      const answeredField= this.findBestMatch(Object.keys(r), ['Answered Calls','Answered']);
-      const missedField  = this.findBestMatch(Object.keys(r), ['Missed Calls','Missed']);
-      const vmField      = this.findBestMatch(Object.keys(r), ['Voicemail Calls','Voicemail']);
-      const durField     = this.findBestMatch(Object.keys(r), map.duration || ['Total Call Duration','Duration']);
-
-      r.TotalCalls_numeric     = totalField    ? cleanNumber(r[totalField])    : 0;
-      r.AnsweredCalls_numeric  = answeredField ? cleanNumber(r[answeredField]) : 0;
-      r.MissedCalls_numeric    = missedField   ? cleanNumber(r[missedField])   : 0;
-      r.VoicemailCalls_numeric = vmField       ? cleanNumber(r[vmField])       : 0;
-      r.TotalCallDuration_numeric = durField   ? cleanNumber(r[durField])      : 0;
+      r.TotalCalls_numeric     = cleanNumber(r['Total Calls']);
+      r.AnsweredCalls_numeric  = cleanNumber(r['Answered Calls']);
+      r.MissedCalls_numeric    = cleanNumber(r['Missed Calls']);
+      r.VoicemailCalls_numeric = cleanNumber(r['Voicemail Calls']);
+      r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
     }
 
     // ----- INBOUND -----
@@ -210,20 +195,17 @@ class DataLoader {
     if (Object.values(row).every(v => isBlank(v))) return false;
 
     if (key === 'outbound') {
-      const agentField = this.findBestMatch(Object.keys(row), getFieldMapping('outbound','agent') || ['Agent','Agent Name','User']);
-      const hasAgent = agentField && !isBlank(row[agentField]);
-      return !!hasAgent;
+      // Only require Agent (so rows with Total Calls = 0 are kept)
+      return !isBlank(row.Agent);
     }
 
     if (key === 'fcr') {
-      const yearField = this.findBestMatch(Object.keys(row), ['Year']);
-      const hasYear = yearField && !isBlank(row[yearField]);
-      return !!hasYear;
+      // Only require Year (so "Total" rows survive too)
+      return !isBlank(row.Year);
     }
 
     if (key === 'inbound') {
-      const callIdField = this.findBestMatch(Object.keys(row), getFieldMapping('inbound','count') || ['Call ID']);
-      return !!(callIdField && !isBlank(row[callIdField]));
+      return !isBlank(row['Call ID']);
     }
 
     return true;
