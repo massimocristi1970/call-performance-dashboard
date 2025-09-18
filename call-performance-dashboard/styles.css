@@ -512,8 +512,10 @@ body {
 .chart-container {
   padding: var(--space-lg);
   position: relative;
-  height: 300px; /* Fixed height */
-  min-height: 300px; /* Ensure minimum height */
+  height: 300px !important;
+  min-height: 300px !important;
+  width: 100% !important;
+  display: block !important;
 }
 
 .chart-canvas {
