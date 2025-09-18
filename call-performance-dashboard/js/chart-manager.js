@@ -1,4 +1,4 @@
-// js/chart-manager.js - Debug version
+// js/chart-manager.js - Force canvas sizing
 import { cleanNumber, parseDate } from './utils.js';
 
 class ChartManager {
@@ -27,6 +27,39 @@ class ChartManager {
     });
   }
 
+  // Force canvas to have proper dimensions before Chart.js touches it
+  forceCanvasSize(canvas, width = 600, height = 300) {
+    console.log(`Forcing canvas size for ${canvas.id}: ${width}x${height}`);
+    
+    // Set canvas attributes
+    canvas.width = width;
+    canvas.height = height;
+    
+    // Set CSS styles
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    canvas.style.display = 'block';
+    
+    // Force parent container sizing
+    const container = canvas.parentElement;
+    if (container) {
+      container.style.width = width + 'px';
+      container.style.height = height + 'px';
+      container.style.position = 'relative';
+      
+      // Force layout recalculation
+      container.offsetHeight;
+    }
+    
+    console.log(`Canvas after forcing size:`, {
+      width: canvas.width,
+      height: canvas.height,
+      offsetWidth: canvas.offsetWidth,
+      offsetHeight: canvas.offsetHeight,
+      style: canvas.style.cssText
+    });
+  }
+
   createCallsOverTimeChart(id, rows, opts = {}) {
     console.log(`Creating calls over time chart for ${id}:`, { rows: rows.length, opts });
     
@@ -45,7 +78,9 @@ class ChartManager {
       console.error(`Chart canvas with id '${id}' not found`);
       return;
     }
-    console.log(`Canvas found for ${id}:`, ctx);
+
+    // CRITICAL: Force canvas size BEFORE Chart.js initialization
+    this.forceCanvasSize(ctx, 600, 300);
 
     // Check if Chart.js is available
     if (!window.Chart) {
@@ -59,7 +94,6 @@ class ChartManager {
     
     for (const r of rows) {
       let d = r[dateField];
-      console.log(`Row date field ${dateField}:`, d);
 
       // Normalize date
       let dt = null;
@@ -121,7 +155,7 @@ class ChartManager {
           }]
         },
         options: {
-          responsive: true,
+          responsive: false, // CRITICAL: Disable responsive to prevent resizing issues
           maintainAspectRatio: false,
           scales: {
             x: { 
@@ -168,6 +202,9 @@ class ChartManager {
       return;
     }
 
+    // Force canvas size
+    this.forceCanvasSize(ctx, 400, 300);
+
     if (!window.Chart) {
       console.error('Chart.js not available');
       return;
@@ -199,7 +236,7 @@ class ChartManager {
           }]
         },
         options: {
-          responsive: true,
+          responsive: false,
           maintainAspectRatio: false,
           plugins: {
             legend: { 
@@ -232,6 +269,9 @@ class ChartManager {
       return;
     }
 
+    // Force canvas size
+    this.forceCanvasSize(ctx, 500, 300);
+
     if (!window.Chart) {
       console.error('Chart.js not available');
       return;
@@ -257,7 +297,7 @@ class ChartManager {
           }]
         },
         options: {
-          responsive: true,
+          responsive: false,
           maintainAspectRatio: false,
           scales: {
             x: { 
@@ -303,6 +343,9 @@ class ChartManager {
       return;
     }
     
+    // Force canvas size
+    this.forceCanvasSize(ctx, 400, 300);
+    
     if (!window.Chart) {
       console.error('Chart.js not available');
       return;
@@ -321,7 +364,7 @@ class ChartManager {
           }] 
         },
         options: {
-          responsive: true,
+          responsive: false,
           maintainAspectRatio: false,
           plugins: { 
             legend: { 
@@ -369,6 +412,9 @@ class ChartManager {
       return;
     }
 
+    // Force canvas size
+    this.forceCanvasSize(ctx, 500, 300);
+
     if (!window.Chart) {
       console.error('Chart.js not available');
       return;
@@ -387,7 +433,7 @@ class ChartManager {
           }] 
         },
         options: {
-          responsive: true,
+          responsive: false,
           maintainAspectRatio: false,
           scales: {
             x: { 
