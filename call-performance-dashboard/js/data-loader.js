@@ -117,72 +117,72 @@ class DataLoader {
     return out;
   }
 
-  processRow(row, fieldMappings) {
-  const processed = {};
+  // NOTE: accepts sourceKey so we can do FCR-specific date building
+  processRow(row, fieldMappings, sourceKey) {
+    const processed = {};
 
-  // 1) copy original row with trimmed keys
-  Object.keys(row).forEach(key => {
-    const cleanKey = key.trim();
-    if (cleanKey) processed[cleanKey] = row[key];
-  });
+    // 1) copy original row with trimmed keys
+    Object.keys(row).forEach(key => {
+      const cleanKey = key.trim();
+      if (cleanKey) processed[cleanKey] = row[key];
+    });
 
-  // 2) build a real date_parsed
-  // --- FCR: compose from Year + Month + Date (day-of-month)
-  if (('Year' in processed) || ('Month' in processed) || ('Date' in processed)) {
-    const y = Number.isFinite(+processed.Year) ? +processed.Year : null;
-    const m = Number.isFinite(+processed.Month) ? +processed.Month : null;
-    const d = Number.isFinite(+processed.Date) ? +processed.Date : null;
-    if (y && m && d) {
-      const dt = new Date(y, m - 1, d);
-      if (!isNaN(dt)) processed.date_parsed = dt;
+    // 2) build date_parsed
+    if (sourceKey === 'fcr') {
+      // FCR has Year, Month, Date (day of month)
+      const y = Number.isFinite(+processed.Year) ? +processed.Year : null;
+      const m = Number.isFinite(+processed.Month) ? +processed.Month : null;
+      const d = Number.isFinite(+processed.Date) ? +processed.Date : null;
+      if (y && m && d) {
+        const dt = new Date(y, m - 1, d);
+        if (!isNaN(dt)) processed.date_parsed = dt;
+      }
+      // fallback if "Date" is actually a full date string
+      if (!processed.date_parsed && processed.Date) {
+        const tryFull = parseDate(processed.Date);
+        if (tryFull) processed.date_parsed = tryFull;
+      }
     }
-    // fallback: if "Date" is already a full date string, try parsing it
-    if (!processed.date_parsed && processed.Date) {
-      const tryFull = parseDate(processed.Date);
-      if (tryFull) processed.date_parsed = tryFull;
+
+    // Generic (Inbound/Outbound): use mapped 'date' field
+    if (!processed.date_parsed) {
+      const candidates = fieldMappings.date || [];
+      const dateField = this.findBestMatch(Object.keys(processed), candidates);
+      if (dateField && processed[dateField]) {
+        const pd = parseDate(processed[dateField]);
+        if (pd) processed.date_parsed = pd;
+      }
     }
+
+    // 3) stable chart date used by renderers.js
+    if (processed.date_parsed instanceof Date && !isNaN(processed.date_parsed)) {
+      processed.__chartDate = processed.date_parsed.toISOString();
+    } else {
+      const df = this.findBestMatch(Object.keys(processed), fieldMappings.date || []);
+      if (df && processed[df]) processed.__chartDate = String(processed[df]);
+    }
+
+    // 4) generic numeric helpers
+    ['duration', 'count', 'waitTime'].forEach(fieldType => {
+      const candidates = fieldMappings[fieldType] || [];
+      const numericField = this.findBestMatch(Object.keys(processed), candidates);
+      if (numericField && processed[numericField] !== undefined) {
+        processed[`${fieldType}_numeric`] = cleanNumber(processed[numericField]);
+      }
+    });
+
+    // 5) outbound-specific numeric columns (by exact headers)
+    if ('Total Calls' in processed)            processed.TotalCalls_numeric        = cleanNumber(processed['Total Calls']);
+    if ('Total Call Duration' in processed)    processed.TotalCallDuration_numeric = cleanNumber(processed['Total Call Duration']);
+    if ('Answered Calls' in processed)         processed.AnsweredCalls_numeric     = cleanNumber(processed['Answered Calls']);
+    if ('Missed Calls' in processed)           processed.MissedCalls_numeric       = cleanNumber(processed['Missed Calls']);
+    if ('Voicemail Calls' in processed)        processed.VoicemailCalls_numeric    = cleanNumber(processed['Voicemail Calls']);
+
+    // 6) fcr numeric
+    if ('Count' in processed)                  processed.Count_numeric             = cleanNumber(processed['Count']);
+
+    return processed;
   }
-
-  // --- Generic (Inbound/Outbound): use mapped 'date' field
-  if (!processed.date_parsed) {
-    const dateField = this.findBestMatch(Object.keys(processed), fieldMappings.date || []);
-    if (dateField && processed[dateField]) {
-      const pd = parseDate(processed[dateField]);
-      if (pd) processed.date_parsed = pd;
-    }
-  }
-
-  // 3) provide a stable chart date used by renderers.js
-  if (processed.date_parsed instanceof Date && !isNaN(processed.date_parsed)) {
-    processed.__chartDate = processed.date_parsed.toISOString(); // ISO is unambiguous
-  } else {
-    // last-resort: at least pass through whatever the raw date field was
-    const df = this.findBestMatch(Object.keys(processed), fieldMappings.date || []);
-    if (df && processed[df]) processed.__chartDate = String(processed[df]);
-  }
-
-  // 4) numeric helpers (generic from mappings)
-  ['duration', 'count', 'waitTime'].forEach(fieldType => {
-    const candidates = fieldMappings[fieldType] || [];
-    const numericField = this.findBestMatch(Object.keys(processed), candidates);
-    if (numericField && processed[numericField] !== undefined) {
-      processed[`${fieldType}_numeric`] = cleanNumber(processed[numericField]);
-    }
-  });
-
-  // 5) outbound-specific numeric columns (by header names)
-  if ('Total Calls' in processed)            processed.TotalCalls_numeric        = cleanNumber(processed['Total Calls']);
-  if ('Total Call Duration' in processed)    processed.TotalCallDuration_numeric = cleanNumber(processed['Total Call Duration']);
-  if ('Answered Calls' in processed)         processed.AnsweredCalls_numeric     = cleanNumber(processed['Answered Calls']);
-  if ('Missed Calls' in processed)           processed.MissedCalls_numeric       = cleanNumber(processed['Missed Calls']);
-  if ('Voicemail Calls' in processed)        processed.VoicemailCalls_numeric    = cleanNumber(processed['Voicemail Calls']);
-
-  // 6) fcr total
-  if ('Count' in processed)                  processed.Count_numeric             = cleanNumber(processed['Count']);
-
-  return processed;
-}
-
 
   findBestMatch(headers, candidates) {
     const norm = headers.map((h) => ({ orig: h, norm: normalizeHeader(h) }));
@@ -195,9 +195,7 @@ class DataLoader {
   }
 
   // Keep rows; filtering happens later
-  isValidRow(/* row, key */) {
-    return true;
-  }
+  isValidRow() { return true; }
 
   getDateRange(data) {
     const dates = data.map((r) => r.date_parsed).filter(Boolean);
@@ -207,37 +205,42 @@ class DataLoader {
   }
 
   filterByDateRange(sourceKey, startDate, endDate) {
-  const data = this.data[sourceKey] || [];
-  if (!startDate || !endDate) return data;
+    const data = this.data[sourceKey] || [];
+    if (!startDate || !endDate) return data;
 
-  const s = parseDate(startDate);
-  const e = parseDate(endDate);
-  if (!s || !e) return data;
+    const s = parseDate(startDate);
+    const e = parseDate(endDate);
+    if (!s || !e) return data;
 
-  // If this dataset has no parseable dates at all, don't nuke it
-  const hasAnyDate = data.some(r => r.date_parsed instanceof Date && !isNaN(r.date_parsed));
-  if (!hasAnyDate) return data;
+    // If this dataset has no parseable dates at all, don't nuke it
+    const hasAnyDate = data.some(r => r.date_parsed instanceof Date && !isNaN(r.date_parsed));
+    if (!hasAnyDate) return data;
 
-  const eod = new Date(e);
-  eod.setHours(23, 59, 59, 999);
+    const eod = new Date(e);
+    eod.setHours(23, 59, 59, 999);
 
-  return data.filter(r => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
-}
-
+    return data.filter(r => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
+  }
 
   getData(key, filters = {}) {
-    let data = [...(this.data[key] || [])];
+    const original = this.data[key] || [];
+    let data = original;
 
+    // Date filtering
     if (filters.startDate && filters.endDate) {
-      data = this.filterByDateRange(key, filters.startDate, filters.endDate);
+      const filtered = this.filterByDateRange(key, filters.startDate, filters.endDate);
+      // Important: for outbound/fcr, if filter wipes all rows, fall back to unfiltered so the page isn't blank
+      data = (filtered.length === 0 && (key === 'outbound' || key === 'fcr')) ? original : filtered;
     }
 
+    // Agent filter
     if (filters.agent) {
       const fields = getFieldMapping(key, 'agent');
       const q = String(filters.agent).toLowerCase();
       data = data.filter((r) => fields.some((f) => r[f] && String(r[f]).toLowerCase().includes(q)));
     }
 
+    // Status filter
     if (filters.status) {
       const fields = getFieldMapping(key, 'status');
       const q = String(filters.status).toLowerCase();
