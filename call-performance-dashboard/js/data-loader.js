@@ -149,17 +149,33 @@ class DataLoader {
     // --- Build date_parsed ---
     if (sourceKey === 'fcr') {
       // FCR: Year + Month + Date (day-of-month)
-      const y = Number(r.Year) || 0;
-      const m = Number(r.Month) || 0;
-      const d = Number(r.Date) || 0;
-      if (y && m && d) {
-        const dt = new Date(y, m - 1, d);
-        if (!isNaN(dt)) r.date_parsed = dt;
+      let year = null;
+      let month = null;
+      let day = null;
+
+      // Try different possible column names for date components
+      if (r.Year || r.year) year = Number(r.Year || r.year);
+      if (r.Month || r.month) month = Number(r.Month || r.month);
+      if (r.Date || r.date || r.Day || r.day) day = Number(r.Date || r.date || r.Day || r.day);
+
+      if (year && month && day && year > 1900 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const dt = new Date(year, month - 1, day);
+        if (!isNaN(dt)) {
+          r.date_parsed = dt;
+          r.__chartDate = dt.toISOString().split('T')[0];
+        }
       }
-      // Fallback if "Date" is actually a full date string
-      if (!r.date_parsed && r.Date) {
-        const tryFull = parseDate(r.Date);
-        if (tryFull) r.date_parsed = tryFull;
+
+      // Fallback if columns are different or if we need to parse a full date string
+      if (!r.date_parsed) {
+        const dateField = this.findBestMatch(Object.keys(r), ['Date', 'date', 'Date/Time', 'datetime']);
+        if (dateField && r[dateField] && !isTotalLike(r[dateField])) {
+          const pd = parseDate(r[dateField]);
+          if (pd) {
+            r.date_parsed = pd;
+            r.__chartDate = pd.toISOString().split('T')[0];
+          }
+        }
       }
     }
 
@@ -168,22 +184,26 @@ class DataLoader {
       const dateField = this.findBestMatch(Object.keys(r), map.date || []);
       if (dateField && r[dateField]) {
         const pd = parseDate(r[dateField]);
-        if (pd) r.date_parsed = pd;
+        if (pd) {
+          r.date_parsed = pd;
+          r.__chartDate = pd.toISOString().split('T')[0];
+        }
       }
     }
 
-    // --- Stable chart date used by charts ---
-    if (r.date_parsed instanceof Date && !isNaN(r.date_parsed)) {
-      r.__chartDate = r.date_parsed.toISOString();
-    } else {
-      const df = this.findBestMatch(Object.keys(r), map.date || []);
-      if (df && r[df] && !isTotalLike(r[df])) r.__chartDate = String(r[df]).trim();
+    // --- Fallback for chart date if parsing failed ---
+    if (!r.__chartDate) {
+      const dateFields = ['Date/Time', 'Date', 'date', 'datetime', ...((map.date || []))];
+      const df = this.findBestMatch(Object.keys(r), dateFields);
+      if (df && r[df] && !isTotalLike(r[df])) {
+        r.__chartDate = String(r[df]).trim();
+      }
     }
 
     // --- Numeric helpers ---
     if (sourceKey === 'inbound') {
-      const durF  = this.findBestMatch(Object.keys(r), map.duration || []);
-      const waitF = this.findBestMatch(Object.keys(r), map.waitTime || []);
+      const durF  = this.findBestMatch(Object.keys(r), map.duration || ['Talk Time', 'Duration']);
+      const waitF = this.findBestMatch(Object.keys(r), map.waitTime || ['Wait Time', 'Queue Time']);
       if (durF)  r.duration_numeric = cleanNumber(r[durF]);
       if (waitF) r.waitTime_numeric = cleanNumber(r[waitF]);
     }
@@ -197,7 +217,7 @@ class DataLoader {
     }
 
     if (sourceKey === 'fcr') {
-      r.Count_numeric = cleanNumber(r['Count']);
+      r.Count_numeric = cleanNumber(r['Count']) || cleanNumber(r['count']);
     }
 
     return r;
@@ -228,20 +248,16 @@ class DataLoader {
         (Number.isFinite(row.MissedCalls_numeric) && row.MissedCalls_numeric > 0) ||
         (Number.isFinite(row.VoicemailCalls_numeric) && row.VoicemailCalls_numeric > 0);
 
-      const hasDate =
-        (row.date_parsed instanceof Date && !isNaN(row.date_parsed)) ||
-        (!!row.__chartDate && !isTotalLike(row.__chartDate));
-
-      return hasSomeMetric || hasDate;
+      return hasSomeMetric;
     }
 
     if (key === 'fcr') {
-      if (isTotalLike(row.Date)) return false;
+      // Skip total rows
+      if (isTotalLike(row.Date) || isTotalLike(row.Year) || isTotalLike(row.Month)) return false;
 
-      const hasCount = Number.isFinite(row.Count_numeric);
-      const hasDate  =
-        (row.date_parsed instanceof Date && !isNaN(row.date_parsed)) ||
-        (!!row.__chartDate && !isTotalLike(row.__chartDate));
+      // Must have a count and some kind of date info
+      const hasCount = Number.isFinite(row.Count_numeric) && row.Count_numeric > 0;
+      const hasDate = !!row.date_parsed || !!row.__chartDate;
 
       return hasCount && hasDate;
     }
@@ -263,7 +279,13 @@ class DataLoader {
     const e = parseDate(endDate);
     if (!s || !e) return data;
 
-    // If this dataset has no parseable dates at all, don't filter it out
+    // For outbound and FCR, be very permissive with date filtering
+    // to prevent blank pages
+    if (key === 'outbound' || key === 'fcr') {
+      return data; // Don't filter by date for these datasets
+    }
+
+    // Apply date filtering only to inbound data
     const hasAnyDate = data.some(r => r.date_parsed instanceof Date && !isNaN(r.date_parsed));
     if (!hasAnyDate) return data;
 
@@ -277,10 +299,9 @@ class DataLoader {
     const original = this.data[key] || [];
     let data = original;
 
-    // Date filtering (with safe fallback for outbound/fcr)
-    if (filters.startDate && filters.endDate) {
-      const filtered = this.filterByDateRange(key, filters.startDate, filters.endDate);
-      data = (filtered.length === 0 && (key === 'outbound' || key === 'fcr')) ? original : filtered;
+    // Only apply date filtering to inbound data
+    if (filters.startDate && filters.endDate && key === 'inbound') {
+      data = this.filterByDateRange(key, filters.startDate, filters.endDate);
     }
 
     // Agent filter

@@ -9,24 +9,15 @@ class PageRenderer {
   updateFilters(filters) { this.currentFilters = { ...filters }; }
 
   async renderPage(pageKey, containerId){
-    // Try with filters first
-    // Use filters for inbound; drop date filters for outbound/fcr so they don't go blank
-	let filters = this.currentFilters || {};
-	if (pageKey === 'outbound' || pageKey === 'fcr') {
-	const { startDate, endDate, ...rest } = filters;
-	filters = rest; // remove date range for these tabs
-	}
-
-	let data = dataLoader.getData(pageKey, filters);
-
-	// Safety fallback: if something still zeroes it out, show unfiltered data
-	if ((!data || data.length === 0) && (pageKey === 'outbound' || pageKey === 'fcr')) {
-		data = dataLoader.getData(pageKey, {});
-	}
-
-    // If Outbound/FCR got wiped by a tight date range, retry unfiltered so the page isn’t blank
-    if ((!data || data.length === 0) && (pageKey === 'outbound' || pageKey === 'fcr')) {
-      data = dataLoader.getData(pageKey, {});
+    let data;
+    
+    // For outbound and FCR, use unfiltered data to prevent blank pages
+    // For inbound, apply filters normally
+    if (pageKey === 'outbound' || pageKey === 'fcr') {
+      data = dataLoader.getData(pageKey, {}); // No date filters
+    } else {
+      // Apply filters for inbound data
+      data = dataLoader.getData(pageKey, this.currentFilters || {});
     }
 
     const container = document.getElementById(containerId);

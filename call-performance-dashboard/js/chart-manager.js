@@ -14,6 +14,19 @@ class ChartManager {
     }
   }
 
+  destroyAllCharts() {
+    this.instances.forEach(chart => chart.destroy());
+    this.instances.clear();
+  }
+
+  resizeAllCharts() {
+    this.instances.forEach(chart => {
+      if (chart && typeof chart.resize === 'function') {
+        chart.resize();
+      }
+    });
+  }
+
   /**
    * Create/replace a time-series chart.
    * opts:
@@ -37,14 +50,18 @@ class ChartManager {
     for (const r of rows) {
       let d = r[dateField];
 
-      // Normalize date — support Date object or string
+      // Normalize date – support Date object or string
       let dt = null;
       if (d instanceof Date) {
         dt = isNaN(d) ? null : d;
       } else if (typeof d === 'string' && d.trim()) {
         // try parse ISO or general date
-        const tryIso = new Date(d);
-        dt = isNaN(tryIso) ? parseDate(d) : tryIso;
+        if (d.includes('T') || /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+          const tryIso = new Date(d);
+          dt = isNaN(tryIso) ? null : tryIso;
+        } else {
+          dt = parseDate(d);
+        }
       }
 
       if (!dt || isNaN(dt)) continue;
@@ -62,39 +79,56 @@ class ChartManager {
       bucket.set(key, aggregate === 'count' ? prev + 1 : prev + v);
     }
 
-    // If nothing bucketed, still render an empty chart (avoid crashing)
+    // Sort keys chronologically
     const keys = Array.from(bucket.keys()).sort();
-    const labels = keys;
+    const labels = keys.map(k => {
+      const date = new Date(k);
+      return date.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+    });
     const data = keys.map(k => bucket.get(k));
 
     const ctx = document.getElementById(id);
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn(`Chart canvas with id '${id}' not found`);
+      return;
+    }
 
     const chart = new window.Chart(ctx, {
       type: 'line',
       data: {
         labels,
         datasets: [{
-          label: valueField ? valueField : 'Count',
+          label: valueField ? valueField.replace('_numeric', '').replace('_', ' ') : 'Count',
           data,
           borderColor: color,
           backgroundColor: color + '33',
           fill: true,
           tension: 0.25,
-          pointRadius: 2
+          pointRadius: 3,
+          pointHoverRadius: 5
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { grid: { display: false } },
-          y: { beginAtZero: true }
+          x: { 
+            grid: { display: false },
+            ticks: { maxTicksLimit: 8 }
+          },
+          y: { 
+            beginAtZero: true,
+            ticks: { precision: 0 }
+          }
         },
         plugins: {
           legend: { display: false },
           tooltip: {
             callbacks: {
+              title: (context) => {
+                const index = context[0].dataIndex;
+                return keys[index]; // Show actual date
+              },
               label: (ctx) => {
                 const val = ctx.parsed.y;
                 return `${val}`;
@@ -115,21 +149,44 @@ class ChartManager {
   createDoughnutChart(id, rows, dataSpec) {
     this._destroyIfExists(id);
     const ctx = document.getElementById(id);
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn(`Chart canvas with id '${id}' not found`);
+      return;
+    }
+
+    // Filter out zero values and corresponding labels
+    const filteredLabels = [];
+    const filteredData = [];
+    for (let i = 0; i < dataSpec.labels.length; i++) {
+      const value = Number.isFinite(dataSpec.data[i]) ? dataSpec.data[i] : cleanNumber(dataSpec.data[i]);
+      if (value > 0) {
+        filteredLabels.push(dataSpec.labels[i]);
+        filteredData.push(value);
+      }
+    }
 
     const chart = new window.Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: dataSpec.labels,
+        labels: filteredLabels,
         datasets: [{
-          data: dataSpec.data.map(v => (Number.isFinite(v) ? v : cleanNumber(v))),
+          data: filteredData,
+          backgroundColor: [
+            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
+          ]
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'bottom' }
+          legend: { 
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              usePointStyle: true
+            }
+          }
         },
         cutout: '60%'
       }
@@ -146,7 +203,14 @@ class ChartManager {
     const { labels = [], data = [], label = 'Value', multiColor = false } = opts;
     this._destroyIfExists(id);
     const ctx = document.getElementById(id);
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn(`Chart canvas with id '${id}' not found`);
+      return;
+    }
+
+    const colors = multiColor 
+      ? ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6']
+      : '#3b82f6';
 
     const chart = new window.Chart(ctx, {
       type: 'bar',
@@ -155,14 +219,23 @@ class ChartManager {
         datasets: [{
           label,
           data: data.map(v => (Number.isFinite(v) ? v : cleanNumber(v))),
+          backgroundColor: multiColor ? colors : colors + '80',
+          borderColor: multiColor ? colors : colors,
+          borderWidth: 1
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { grid: { display: false } },
-          y: { beginAtZero: true }
+          x: { 
+            grid: { display: false },
+            ticks: { maxRotation: 45 }
+          },
+          y: { 
+            beginAtZero: true,
+            ticks: { precision: 0 }
+          }
         },
         plugins: {
           legend: { display: false }
@@ -183,18 +256,39 @@ class ChartManager {
       const s = (r[statusField] || 'Unknown').toString().trim();
       counts.set(s, (counts.get(s) || 0) + 1);
     }
-    const labels = Array.from(counts.keys());
-    const data = Array.from(counts.values());
+    
+    const labels = Array.from(counts.keys()).filter(key => counts.get(key) > 0);
+    const data = labels.map(key => counts.get(key));
 
     const ctx = document.getElementById(id);
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn(`Chart canvas with id '${id}' not found`);
+      return;
+    }
+    
     const chart = new window.Chart(ctx, {
       type: 'pie',
-      data: { labels, datasets: [{ data }] },
+      data: { 
+        labels, 
+        datasets: [{ 
+          data,
+          backgroundColor: [
+            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'
+          ]
+        }] 
+      },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom' } }
+        plugins: { 
+          legend: { 
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              usePointStyle: true
+            }
+          }
+        }
       }
     });
     this.instances.set(id, chart);
@@ -209,7 +303,9 @@ class ChartManager {
     const byAgent = new Map();
     for (const r of rows) {
       const a = (r[agentField] || 'Unknown').toString().trim();
-      byAgent.set(a, (byAgent.get(a) || 0) + 1);
+      if (a && a !== 'Unknown' && a !== '') {
+        byAgent.set(a, (byAgent.get(a) || 0) + 1);
+      }
     }
 
     const top = Array.from(byAgent.entries())
@@ -220,19 +316,38 @@ class ChartManager {
     const data = top.map(([, v]) => v);
 
     const ctx = document.getElementById(id);
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn(`Chart canvas with id '${id}' not found`);
+      return;
+    }
 
     const chart = new window.Chart(ctx, {
       type: 'bar',
-      data: { labels, datasets: [{ data }] },
+      data: { 
+        labels, 
+        datasets: [{ 
+          data,
+          backgroundColor: '#3b82f680',
+          borderColor: '#3b82f6',
+          borderWidth: 1
+        }] 
+      },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { grid: { display: false } },
-          y: { beginAtZero: true }
+          x: { 
+            grid: { display: false },
+            ticks: { maxRotation: 45 }
+          },
+          y: { 
+            beginAtZero: true,
+            ticks: { precision: 0 }
+          }
         },
-        plugins: { legend: { display: false } }
+        plugins: { 
+          legend: { display: false }
+        }
       }
     });
 
