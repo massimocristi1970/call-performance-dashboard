@@ -11,6 +11,17 @@ import {
   cleanNumber
 } from './utils.js';
 
+// Helpers to detect non-data rows
+function isTotalLike(val) {
+  if (val == null) return false;
+  const s = String(val).trim().toLowerCase();
+  return s === 'total' || s === 'grand total' || s === 'subtotal' || s === 'summary';
+}
+function isBlank(val) {
+  return val == null || String(val).trim() === '';
+}
+
+
 class DataLoader {
   constructor() {
     this.data = {};
@@ -75,22 +86,34 @@ class DataLoader {
     if (!text.trim()) throw new Error('Empty data file');
 
     const parsed = await this.parseCSV(text);
-    const data = this.processData(parsed, key);
-    const meta = {
-      source: src.name,
-      rowCount: data.length,
-      columns: data.length ? Object.keys(data[0]) : [],
-      loadedAt: new Date().toISOString(),
-      dateRange: this.getDateRange(data)
-    };
-    return { data, metadata: meta };
-  }
+	const data = this.processData(parsed, key);
+
+	// compute dateRange inline (avoid calling this.getDateRange)
+	const dateRange = (() => {
+	const dates = data
+		.map(r => r.date_parsed)
+		.filter(Boolean)
+		.sort((a, b) => a - b);
+	return dates.length
+		? { start: dates[0], end: dates[dates.length - 1], count: dates.length }
+		: null;
+	})();
+
+	const meta = {
+	  source: src.name,
+	  rowCount: data.length,
+	  columns: data.length ? Object.keys(data[0]) : [],
+	  loadedAt: new Date().toISOString(),
+	  dateRange
+	};
+	return { data, metadata: meta };
+
 
   parseCSV(text) {
     return new Promise((resolve, reject) => {
       Papa.parse(text, {
         header: true,
-        skipEmptyLines: true,
+        skipEmptyLines: 'greedy',
         dynamicTyping: false,
         delimitersToGuess: [',', '\t', ';', '|'],
         transformHeader: (h) => h.trim().replace(/^\uFEFF/, ''),
@@ -117,72 +140,69 @@ class DataLoader {
     return out;
   }
 
-  // NOTE: accepts sourceKey so we can do FCR-specific date building
-  processRow(row, fieldMappings, sourceKey) {
-    const processed = {};
+ processRow(row, fieldMappings, sourceKey) {
+  const r = {};
+  // copy with trimmed keys
+  Object.keys(row).forEach(k => { const ck = k.trim(); if (ck) r[ck] = row[k]; });
 
-    // 1) copy original row with trimmed keys
-    Object.keys(row).forEach(key => {
-      const cleanKey = key.trim();
-      if (cleanKey) processed[cleanKey] = row[key];
-    });
-
-    // 2) build date_parsed
-    if (sourceKey === 'fcr') {
-      // FCR has Year, Month, Date (day of month)
-      const y = Number.isFinite(+processed.Year) ? +processed.Year : null;
-      const m = Number.isFinite(+processed.Month) ? +processed.Month : null;
-      const d = Number.isFinite(+processed.Date) ? +processed.Date : null;
-      if (y && m && d) {
-        const dt = new Date(y, m - 1, d);
-        if (!isNaN(dt)) processed.date_parsed = dt;
-      }
-      // fallback if "Date" is actually a full date string
-      if (!processed.date_parsed && processed.Date) {
-        const tryFull = parseDate(processed.Date);
-        if (tryFull) processed.date_parsed = tryFull;
-      }
+  // --- Build date_parsed ---
+  if (sourceKey === 'fcr') {
+    // FCR: Year + Month + Date (day-of-month)
+    const y = Number.isFinite(+r.Year) ? +r.Year : null;
+    const m = Number.isFinite(+r.Month) ? +r.Month : null;
+    const d = Number.isFinite(+r.Date) ? +r.Date : null;
+    if (y && m && d) {
+      const dt = new Date(y, m - 1, d);
+      if (!isNaN(dt)) r.date_parsed = dt;
     }
-
-    // Generic (Inbound/Outbound): use mapped 'date' field
-    if (!processed.date_parsed) {
-      const candidates = fieldMappings.date || [];
-      const dateField = this.findBestMatch(Object.keys(processed), candidates);
-      if (dateField && processed[dateField]) {
-        const pd = parseDate(processed[dateField]);
-        if (pd) processed.date_parsed = pd;
-      }
+    // Fallback if "Date" is actually a full date string
+    if (!r.date_parsed && r.Date) {
+      const tryFull = parseDate(r.Date);
+      if (tryFull) r.date_parsed = tryFull;
     }
-
-    // 3) stable chart date used by renderers.js
-    if (processed.date_parsed instanceof Date && !isNaN(processed.date_parsed)) {
-      processed.__chartDate = processed.date_parsed.toISOString();
-    } else {
-      const df = this.findBestMatch(Object.keys(processed), fieldMappings.date || []);
-      if (df && processed[df]) processed.__chartDate = String(processed[df]);
-    }
-
-    // 4) generic numeric helpers
-    ['duration', 'count', 'waitTime'].forEach(fieldType => {
-      const candidates = fieldMappings[fieldType] || [];
-      const numericField = this.findBestMatch(Object.keys(processed), candidates);
-      if (numericField && processed[numericField] !== undefined) {
-        processed[`${fieldType}_numeric`] = cleanNumber(processed[numericField]);
-      }
-    });
-
-    // 5) outbound-specific numeric columns (by exact headers)
-    if ('Total Calls' in processed)            processed.TotalCalls_numeric        = cleanNumber(processed['Total Calls']);
-    if ('Total Call Duration' in processed)    processed.TotalCallDuration_numeric = cleanNumber(processed['Total Call Duration']);
-    if ('Answered Calls' in processed)         processed.AnsweredCalls_numeric     = cleanNumber(processed['Answered Calls']);
-    if ('Missed Calls' in processed)           processed.MissedCalls_numeric       = cleanNumber(processed['Missed Calls']);
-    if ('Voicemail Calls' in processed)        processed.VoicemailCalls_numeric    = cleanNumber(processed['Voicemail Calls']);
-
-    // 6) fcr numeric
-    if ('Count' in processed)                  processed.Count_numeric             = cleanNumber(processed['Count']);
-
-    return processed;
   }
+
+  // Generic mapped date (Inbound/Outbound)
+  if (!r.date_parsed) {
+    const dateField = this.findBestMatch(Object.keys(r), fieldMappings.date || []);
+    if (dateField && r[dateField]) {
+      const pd = parseDate(r[dateField]);
+      if (pd) r.date_parsed = pd;
+    }
+  }
+
+  // --- Numeric helpers ---
+  if (sourceKey === 'inbound') {
+    const durF  = this.findBestMatch(Object.keys(r), fieldMappings.duration || []);
+    const waitF = this.findBestMatch(Object.keys(r), fieldMappings.waitTime || []);
+    if (durF)  r.duration_numeric = cleanNumber(r[durF]);
+    if (waitF) r.waitTime_numeric = cleanNumber(r[waitF]);
+  }
+
+  if (sourceKey === 'outbound') {
+    r.TotalCalls_numeric        = cleanNumber(r['Total Calls']);
+    r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
+    r.AnsweredCalls_numeric     = cleanNumber(r['Answered Calls']);
+    r.MissedCalls_numeric       = cleanNumber(r['Missed Calls']);
+    r.VoicemailCalls_numeric    = cleanNumber(r['Voicemail Calls']);
+  }
+
+  if (sourceKey === 'fcr') {
+    r.Count_numeric = cleanNumber(r['Count']);
+  }
+
+  // --- Stable chart date (only for rows we might keep) ---
+  if (r.date_parsed instanceof Date && !isNaN(r.date_parsed)) {
+    r.__chartDate = r.date_parsed.toISOString();
+  } else {
+    const df = this.findBestMatch(Object.keys(r), fieldMappings.date || []);
+    if (df && r[df] && !isTotalLike(r[df])) {
+      r.__chartDate = String(r[df]).trim();
+    }
+  }
+
+  return r;
+}
 
   findBestMatch(headers, candidates) {
     const norm = headers.map((h) => ({ orig: h, norm: normalizeHeader(h) }));
@@ -194,15 +214,49 @@ class DataLoader {
     return null;
   }
 
-  // Keep rows; filtering happens later
-  isValidRow() { return true; }
+  isValidRow(row, key) {
+  // Drop completely blank rows early
+  const allEmpty = Object.values(row).every(v => isBlank(v));
+  if (allEmpty) return false;
 
-  getDateRange(data) {
-    const dates = data.map((r) => r.date_parsed).filter(Boolean);
-    if (dates.length === 0) return null;
-    dates.sort((a, b) => a - b);
-    return { start: dates[0], end: dates[dates.length - 1], count: dates.length };
+  // OUTBOUND: drop totals/footer lines and header echoes
+  if (key === 'outbound') {
+    // common total rows: Date = "Total", Agent = "Total", etc.
+    if (isTotalLike(row.Date) || isTotalLike(row.Agent)) return false;
+
+    // keep only rows with some numeric activity or a plausible date
+    const hasSomeMetric =
+      (Number.isFinite(row.TotalCalls_numeric) && row.TotalCalls_numeric > 0) ||
+      (Number.isFinite(row.AnsweredCalls_numeric) && row.AnsweredCalls_numeric > 0) ||
+      (Number.isFinite(row.MissedCalls_numeric) && row.MissedCalls_numeric > 0) ||
+      (Number.isFinite(row.VoicemailCalls_numeric) && row.VoicemailCalls_numeric > 0);
+
+    const hasDate = (row.date_parsed instanceof Date && !isNaN(row.date_parsed)) ||
+                    (!!row.__chartDate && !isTotalLike(row.__chartDate));
+
+    return hasSomeMetric || hasDate;
   }
+
+  // FCR: drop totals/footer; require a count or a valid date
+  if (key === 'fcr') {
+    if (isTotalLike(row.Date)) return false;
+
+    const hasCount = Number.isFinite(row.Count_numeric) && row.Count_numeric >= 0;
+    const hasDate  = (row.date_parsed instanceof Date && !isNaN(row.date_parsed)) ||
+                     (!!row.__chartDate && !isTotalLike(row.__chartDate));
+
+    return hasCount && hasDate;
+  }
+
+  // INBOUND: require a Call ID-like row (prevents headers/footers)
+  if (key === 'inbound') {
+    const hasId = !isBlank(row['Call ID']);
+    return hasId;
+  }
+
+  return true;
+}
+
 
   filterByDateRange(sourceKey, startDate, endDate) {
     const data = this.data[sourceKey] || [];
