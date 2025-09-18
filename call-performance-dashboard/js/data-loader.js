@@ -117,79 +117,70 @@ class DataLoader {
     return out;
   }
 
-  processRow(row, map, key) {
-  // Copy with trimmed keys
-  const r = {};
-  Object.keys(row).forEach(k => { const ck = k.trim(); if (ck) r[ck] = row[k]; });
+  processRow(row, fieldMappings) {
+  const processed = {};
 
-  // --- Build date_parsed ---
+  // 1) copy original row with trimmed keys
+  Object.keys(row).forEach(key => {
+    const cleanKey = key.trim();
+    if (cleanKey) processed[cleanKey] = row[key];
+  });
 
-  // FCR: compose from Year/Month/Date (day-of-month)
-  if (key === 'fcr') {
-    const y = cleanNumber(r.Year);
-    const m = cleanNumber(r.Month);
-    const d = cleanNumber(r.Date);
+  // 2) build a real date_parsed
+  // --- FCR: compose from Year + Month + Date (day-of-month)
+  if (('Year' in processed) || ('Month' in processed) || ('Date' in processed)) {
+    const y = Number.isFinite(+processed.Year) ? +processed.Year : null;
+    const m = Number.isFinite(+processed.Month) ? +processed.Month : null;
+    const d = Number.isFinite(+processed.Date) ? +processed.Date : null;
     if (y && m && d) {
       const dt = new Date(y, m - 1, d);
-      if (!isNaN(dt.getTime())) r.date_parsed = dt;
+      if (!isNaN(dt)) processed.date_parsed = dt;
     }
-    // Fallback: sometimes "Date" is already a full date string
-    if (!r.date_parsed && r.Date) {
-      const tryFull = parseDate(r.Date);
-      if (tryFull) r.date_parsed = tryFull;
-    }
-  }
-
-  // Generic mapped date (Outbound/Inbound and any other)
-  if (!r.date_parsed) {
-    const dateField = this.findBestMatch(Object.keys(r), map.date || []);
-    if (dateField && r[dateField]) {
-      const pd = parseDate(r[dateField]);
-      if (pd) r.date_parsed = pd;
+    // fallback: if "Date" is already a full date string, try parsing it
+    if (!processed.date_parsed && processed.Date) {
+      const tryFull = parseDate(processed.Date);
+      if (tryFull) processed.date_parsed = tryFull;
     }
   }
 
-  // --- Provide a stable chart date for ALL datasets ---
-  if (r.date_parsed instanceof Date && !isNaN(r.date_parsed)) {
-    r.__chartDate = r.date_parsed.toISOString(); // unambiguous ISO string
+  // --- Generic (Inbound/Outbound): use mapped 'date' field
+  if (!processed.date_parsed) {
+    const dateField = this.findBestMatch(Object.keys(processed), fieldMappings.date || []);
+    if (dateField && processed[dateField]) {
+      const pd = parseDate(processed[dateField]);
+      if (pd) processed.date_parsed = pd;
+    }
+  }
+
+  // 3) provide a stable chart date used by renderers.js
+  if (processed.date_parsed instanceof Date && !isNaN(processed.date_parsed)) {
+    processed.__chartDate = processed.date_parsed.toISOString(); // ISO is unambiguous
   } else {
-    // Fallback so charts never crash even if date parsing failed
-    const df = this.findBestMatch(Object.keys(r), map.date || []);
-    if (df && r[df]) r.__chartDate = String(r[df]);
-  }
-  
-  // After you set r.date_parsed (or similar):
-if (r.date_parsed instanceof Date && !isNaN(r.date_parsed)) {
-  r.__chartDate = r.date_parsed.toISOString(); // unambiguous
-} else {
-  // fallback: if a raw date field exists, at least pass the string
-  const df = this.findBestMatch(Object.keys(r), fieldMappings.date || []);
-  if (df && r[df]) r.__chartDate = String(r[df]);
-}
-
-
-  // --- Numeric helpers ---
-
-  if (key === 'inbound') {
-    const durF  = this.findBestMatch(Object.keys(r), map.duration || []);
-    const waitF = this.findBestMatch(Object.keys(r), map.waitTime || []);
-    if (durF)  r.duration_numeric  = cleanNumber(r[durF]);
-    if (waitF) r.waitTime_numeric  = cleanNumber(r[waitF]);
+    // last-resort: at least pass through whatever the raw date field was
+    const df = this.findBestMatch(Object.keys(processed), fieldMappings.date || []);
+    if (df && processed[df]) processed.__chartDate = String(processed[df]);
   }
 
-  if (key === 'outbound') {
-    r.TotalCalls_numeric        = cleanNumber(r['Total Calls']);
-    r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
-    r.AnsweredCalls_numeric     = cleanNumber(r['Answered Calls']);
-    r.MissedCalls_numeric       = cleanNumber(r['Missed Calls']);
-    r.VoicemailCalls_numeric    = cleanNumber(r['Voicemail Calls']);
-  }
+  // 4) numeric helpers (generic from mappings)
+  ['duration', 'count', 'waitTime'].forEach(fieldType => {
+    const candidates = fieldMappings[fieldType] || [];
+    const numericField = this.findBestMatch(Object.keys(processed), candidates);
+    if (numericField && processed[numericField] !== undefined) {
+      processed[`${fieldType}_numeric`] = cleanNumber(processed[numericField]);
+    }
+  });
 
-  if (key === 'fcr') {
-    r.Count_numeric = cleanNumber(r['Count']);
-  }
+  // 5) outbound-specific numeric columns (by header names)
+  if ('Total Calls' in processed)            processed.TotalCalls_numeric        = cleanNumber(processed['Total Calls']);
+  if ('Total Call Duration' in processed)    processed.TotalCallDuration_numeric = cleanNumber(processed['Total Call Duration']);
+  if ('Answered Calls' in processed)         processed.AnsweredCalls_numeric     = cleanNumber(processed['Answered Calls']);
+  if ('Missed Calls' in processed)           processed.MissedCalls_numeric       = cleanNumber(processed['Missed Calls']);
+  if ('Voicemail Calls' in processed)        processed.VoicemailCalls_numeric    = cleanNumber(processed['Voicemail Calls']);
 
-  return r;
+  // 6) fcr total
+  if ('Count' in processed)                  processed.Count_numeric             = cleanNumber(processed['Count']);
+
+  return processed;
 }
 
 
@@ -223,10 +214,13 @@ if (r.date_parsed instanceof Date && !isNaN(r.date_parsed)) {
   const e = parseDate(endDate);
   if (!s || !e) return data;
 
+  // If this dataset has no parseable dates at all, don't nuke it
   const hasAnyDate = data.some(r => r.date_parsed instanceof Date && !isNaN(r.date_parsed));
-  if (!hasAnyDate) return data; // don't nuke the dataset
+  if (!hasAnyDate) return data;
 
-  const eod = new Date(e); eod.setHours(23, 59, 59, 999);
+  const eod = new Date(e);
+  eod.setHours(23, 59, 59, 999);
+
   return data.filter(r => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
 }
 
