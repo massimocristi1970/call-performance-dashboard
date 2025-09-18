@@ -1,4 +1,4 @@
-// js/data-loader.js - Correct Fix for DD/MM/YYYY dates
+// js/data-loader.js - Full Diagnostic Version
 import { CONFIG, getFieldMapping } from './config.js';
 import {
   showError,
@@ -34,19 +34,24 @@ class DataLoader {
     hideError();
     showLoading('Initializing data load...', 0);
 
+    console.log('=== STARTING DATA LOAD ===');
+
     try {
       const keys = Object.keys(CONFIG.dataSources);
+      console.log('Data sources to load:', keys);
       let done = 0;
 
       const results = await Promise.all(
         keys.map(async (key) => {
           try {
+            console.log(`Loading ${key}...`);
             const res = await this.loadDataSource(key);
             done += 1;
             updateProgress((done / keys.length) * 100, `Loaded ${CONFIG.dataSources[key].name}`);
+            console.log(`✓ Successfully loaded ${key}:`, res.data.length, 'rows');
             return { key, ...res };
           } catch (e) {
-            console.error(`Failed to load ${key}:`, e);
+            console.error(`✗ Failed to load ${key}:`, e);
             done += 1;
             updateProgress((done / keys.length) * 100);
             return { key, data: [], metadata: {}, error: e.message };
@@ -62,6 +67,14 @@ class DataLoader {
         }
         this.data[key] = data;
         this.metadata[key] = metadata;
+        
+        console.log(`Final data for ${key}:`, {
+          totalRows: data.length,
+          firstRow: data[0],
+          lastRow: data[data.length - 1],
+          columns: data.length ? Object.keys(data[0]) : [],
+          sampleDates: data.slice(0, 3).map(r => ({ __chartDate: r.__chartDate, date_parsed: r.date_parsed }))
+        });
       });
 
       if (!hasErr) {
@@ -71,6 +84,11 @@ class DataLoader {
         hideLoading();
       }
 
+      console.log('=== FINAL DATA SUMMARY ===');
+      Object.keys(this.data).forEach(key => {
+        console.log(`${key}: ${this.data[key].length} rows loaded`);
+      });
+
       return this.data;
     } finally {
       this.isLoading = false;
@@ -79,15 +97,31 @@ class DataLoader {
 
   async loadDataSource(key) {
     const src = CONFIG.dataSources[key];
+    console.log(`Fetching ${key} from:`, src.url);
+    
     const resp = await fetch(src.url);
     if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
     const text = await resp.text();
     if (!text.trim()) throw new Error('Empty data file');
 
-    const parsed = await this.parseCSV(text);
-    const data = this.processData(parsed, key);
+    console.log(`Raw CSV text length for ${key}:`, text.length);
+    console.log(`First 200 chars:`, text.substring(0, 200));
 
-    // compute dateRange inline
+    const parsed = await this.parseCSV(text);
+    console.log(`Parsed CSV for ${key}:`, {
+      totalRows: parsed.length,
+      headers: parsed.length ? Object.keys(parsed[0]) : [],
+      firstThreeRows: parsed.slice(0, 3)
+    });
+
+    const data = this.processData(parsed, key);
+    console.log(`Processed data for ${key}:`, {
+      originalRows: parsed.length,
+      validRows: data.length,
+      rejectedRows: parsed.length - data.length,
+      firstProcessedRow: data[0]
+    });
+
     const dateRange = (() => {
       const dates = data
         .map(r => r.date_parsed)
@@ -116,25 +150,55 @@ class DataLoader {
         dynamicTyping: false,
         delimitersToGuess: [',', '\t', ';', '|'],
         transformHeader: (h) => h.trim().replace(/^\uFEFF/, ''),
-        complete: (res) => resolve(res.data),
+        complete: (res) => {
+          console.log('Papa Parse result:', {
+            data: res.data?.length || 0,
+            errors: res.errors,
+            meta: res.meta
+          });
+          resolve(res.data);
+        },
         error: (err) => reject(new Error(`CSV parsing failed: ${err.message}`))
       });
     });
   }
 
   processData(rows, key) {
+    console.log(`\n=== PROCESSING ${key.toUpperCase()} DATA ===`);
     if (!rows || rows.length === 0) return [];
     const map = CONFIG.fieldMappings[key] || {};
     const out = [];
 
-    for (let i = 0; i < rows.length; i++) {
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      try {
+        console.log(`Processing row ${i} for ${key}:`, rows[i]);
+        const r = this.processRow(rows[i], map, key);
+        console.log(`After processing:`, r);
+        
+        const isValid = this.isValidRow(r, key);
+        console.log(`Row ${i} valid?`, isValid);
+        
+        if (isValid) {
+          out.push(r);
+        } else {
+          console.log(`Row ${i} rejected`);
+        }
+      } catch (e) {
+        console.error(`Row ${i + 1} error:`, e, rows[i]);
+      }
+    }
+
+    // Process remaining rows without logging
+    for (let i = 10; i < rows.length; i++) {
       try {
         const r = this.processRow(rows[i], map, key);
         if (this.isValidRow(r, key)) out.push(r);
       } catch (e) {
-        console.warn(`Row ${i + 1} skipped:`, e, rows[i]);
+        console.warn(`Row ${i + 1} skipped:`, e);
       }
     }
+
+    console.log(`${key} processing complete: ${out.length}/${rows.length} rows kept`);
     return out;
   }
 
@@ -145,9 +209,10 @@ class DataLoader {
       if (ck) r[ck] = row[k];
     });
 
-    // --- Date parsing for all datasets ---
+    console.log(`Processing ${sourceKey} row with columns:`, Object.keys(r));
+
     if (sourceKey === 'fcr') {
-      // FCR: Year + Month + Date columns
+      console.log('FCR date components:', { Year: r.Year, Month: r.Month, Date: r.Date });
       const year = cleanNumber(r.Year);
       const month = cleanNumber(r.Month);
       const day = cleanNumber(r.Date);
@@ -157,32 +222,39 @@ class DataLoader {
         if (!isNaN(dt)) {
           r.date_parsed = dt;
           r.__chartDate = dt.toISOString().split('T')[0];
+          console.log('FCR date parsed:', r.__chartDate);
         }
       }
       
       r.Count_numeric = cleanNumber(r.Count);
+      console.log('FCR Count_numeric:', r.Count_numeric);
     }
 
     if (sourceKey === 'outbound') {
-      // Outbound has Date column in DD/MM/YYYY format
+      console.log('Outbound date field:', r.Date);
       if (r.Date) {
         const pd = parseDate(r.Date);
+        console.log('Parsed date result:', pd);
         if (pd) {
           r.date_parsed = pd;
           r.__chartDate = pd.toISOString().split('T')[0];
+          console.log('Outbound date set:', r.__chartDate);
         }
       }
       
-      // Process numeric fields
       r.TotalCalls_numeric = cleanNumber(r['Total Calls']);
-      r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
       r.AnsweredCalls_numeric = cleanNumber(r['Answered Calls']);
       r.MissedCalls_numeric = cleanNumber(r['Missed Calls']);
       r.VoicemailCalls_numeric = cleanNumber(r['Voicemail Calls']);
+      
+      console.log('Outbound metrics:', {
+        totalCalls: r.TotalCalls_numeric,
+        answered: r.AnsweredCalls_numeric,
+        missed: r.MissedCalls_numeric
+      });
     }
 
     if (sourceKey === 'inbound') {
-      // Keep inbound processing exactly the same
       const dateField = this.findBestMatch(Object.keys(r), map.date || ['Date/Time']);
       if (dateField && r[dateField]) {
         const pd = parseDate(r[dateField]);
@@ -212,32 +284,30 @@ class DataLoader {
   }
 
   isValidRow(row, key) {
-    // Drop completely blank rows
-    if (Object.values(row).every(v => isBlank(v))) return false;
+    if (Object.values(row).every(v => isBlank(v))) {
+      console.log('Row rejected: completely blank');
+      return false;
+    }
 
     if (key === 'outbound') {
-      // Must have a date, agent, and some call data
       const hasDate = !isBlank(row.Date);
       const hasAgent = !isBlank(row.Agent);
-      const hasCallData = cleanNumber(row['Total Calls']) > 0 || 
-                         cleanNumber(row['Answered Calls']) > 0 || 
-                         cleanNumber(row['Missed Calls']) > 0 ||
-                         cleanNumber(row['Voicemail Calls']) > 0;
+      const hasCallData = cleanNumber(row['Total Calls']) > 0;
       
+      console.log('Outbound validation:', { hasDate, hasAgent, hasCallData, date: row.Date, agent: row.Agent, totalCalls: row['Total Calls'] });
       return hasDate && hasAgent && hasCallData;
     }
 
     if (key === 'fcr') {
-      // Must have proper date components and count data
       const hasValidDate = !isBlank(row.Year) && !isBlank(row.Month) && !isBlank(row.Date) &&
                            !isTotalLike(row.Year) && !isTotalLike(row.Month) && !isTotalLike(row.Date);
       const hasCount = cleanNumber(row.Count) > 0;
       
+      console.log('FCR validation:', { hasValidDate, hasCount, year: row.Year, month: row.Month, date: row.Date, count: row.Count });
       return hasValidDate && hasCount;
     }
 
     if (key === 'inbound') {
-      // Keep inbound validation exactly the same
       return !isBlank(row['Call ID']);
     }
 
@@ -246,48 +316,47 @@ class DataLoader {
 
   filterByDateRange(key, startDate, endDate) {
     const data = this.data[key] || [];
+    console.log(`Filtering ${key} by date range ${startDate} to ${endDate}. Original count:`, data.length);
+    
     if (!startDate || !endDate) return data;
 
     const s = parseDate(startDate);
     const e = parseDate(endDate);
     if (!s || !e) return data;
 
-    // Check if this dataset has parseable dates
     const hasAnyDate = data.some(r => r.date_parsed instanceof Date && !isNaN(r.date_parsed));
+    console.log(`${key} has parseable dates:`, hasAnyDate);
+    
     if (!hasAnyDate) return data;
 
     const eod = new Date(e);
     eod.setHours(23, 59, 59, 999);
 
-    return data.filter(r => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
+    const filtered = data.filter(r => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
+    console.log(`${key} after date filtering:`, filtered.length);
+    
+    return filtered;
   }
 
   getData(key, filters = {}) {
+    console.log(`\n=== GETTING DATA FOR ${key.toUpperCase()} ===`);
+    console.log('Filters:', filters);
+    console.log('Raw data count:', this.data[key]?.length || 0);
+    
     const original = this.data[key] || [];
     let data = original;
 
-    // Apply date filtering to all datasets that have valid dates
     if (filters.startDate && filters.endDate) {
       const filtered = this.filterByDateRange(key, filters.startDate, filters.endDate);
-      // Only use filtered results if we actually have some data after filtering
-      // This prevents blank pages when date ranges are too restrictive
       if (filtered.length > 0 || key === 'inbound') {
         data = filtered;
       }
+      console.log('After date filtering:', data.length);
     }
 
-    // Agent filter
-    if (filters.agent) {
-      const fields = getFieldMapping(key, 'agent');
-      const q = String(filters.agent).toLowerCase();
-      data = data.filter((r) => fields.some((f) => r[f] && String(r[f]).toLowerCase().includes(q)));
-    }
-
-    // Status filter
-    if (filters.status) {
-      const fields = getFieldMapping(key, 'status');
-      const q = String(filters.status).toLowerCase();
-      data = data.filter((r) => fields.some((f) => r[f] && String(r[f]).toLowerCase().includes(q)));
+    console.log(`Final data count for ${key}:`, data.length);
+    if (data.length > 0) {
+      console.log('Sample data:', data[0]);
     }
 
     return data;
