@@ -61,7 +61,7 @@ class ChartManager {
   }
 
   createCallsOverTimeChart(id, rows, opts = {}) {
-    console.log(`Creating calls over time chart for ${id}:`, { rows: rows.length, opts });
+    console.log('CHART CREATION CALLED:', { id, rows: rows.length, opts });
     
     const {
       dateField,
