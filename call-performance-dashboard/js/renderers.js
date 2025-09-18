@@ -6,7 +6,9 @@ import chartManager from './chart-manager.js';
 
 class PageRenderer {
   constructor(){ this.currentFilters = {}; }
-  updateFilters(f){ this.currentFilters = { ...f }; }
+  updateFilters(filters) {
+  this.currentFilters = { ...filters };
+}
 
   async renderPage(pageKey, containerId){
     const data = dataLoader.getData(pageKey, this.currentFilters);
@@ -49,7 +51,7 @@ class PageRenderer {
       kpiGrid.appendChild(node);
     });
 
-    // Charts
+// Charts
 const grid = container.querySelector('.charts-grid');
 
 if (pageKey === 'fcr') {
@@ -57,7 +59,7 @@ if (pageKey === 'fcr') {
   grid.appendChild(this.chartWrap('Cases Over Time', id));
   const valueField = ('Count_numeric' in data[0]) ? 'Count_numeric' : 'Count';
   chartManager.createCallsOverTimeChart(id, data, {
-    dateField: 'date_parsed',
+    dateField: '__chartDate',
     valueField,
     color: CONFIG.dataSources[pageKey].color
   });
@@ -68,7 +70,7 @@ if (pageKey === 'outbound') {
   const id1 = `${pageKey}-calls-over-time`;
   grid.appendChild(this.chartWrap('Outbound Calls Over Time', id1));
   chartManager.createCallsOverTimeChart(id1, data, {
-    dateField: 'date_parsed',
+    dateField: '__chartDate',
     valueField: 'TotalCalls_numeric',
     color: CONFIG.dataSources[pageKey].color
   });
@@ -101,9 +103,10 @@ if (pageKey === 'outbound') {
 const idA = `${pageKey}-calls-over-time`;
 grid.appendChild(this.chartWrap('Inbound Calls Over Time', idA));
 chartManager.createCallsOverTimeChart(idA, data, {
-  dateField: 'date_parsed',
+  dateField: '__chartDate',
   color: CONFIG.dataSources[pageKey].color
 });
+
 
 
     const idB = `${pageKey}-status`;
