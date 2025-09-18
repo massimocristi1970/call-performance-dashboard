@@ -107,7 +107,7 @@ Place your CSV files in the `data/` directory. The dashboard supports:
 
 ### 4. Launch
 
-Simply open `index.html` in a web browser or serve via HTTP server:
+Serve the dashboard via HTTP server:
 
 **Using Python:**
 ```bash
@@ -123,6 +123,8 @@ npx serve .
 ```bash
 php -S localhost:8000
 ```
+
+Visit **http://localhost:8000** in your browser to access the dashboard.
 
 ## ⚙️ Configuration
 
