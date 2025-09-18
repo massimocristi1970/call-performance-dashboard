@@ -78,6 +78,14 @@ class ChartManager {
       console.error(`Chart canvas with id '${id}' not found`);
       return;
     }
+	
+	console.log(`Canvas found for ${id}:`, {
+		id: ctx.id,
+		offsetWidth: ctx.offsetWidth,
+		offsetHeight: ctx.offsetHeight,
+		parentOffsetWidth: ctx.parentElement?.offsetWidth,
+		parentOffsetHeight: ctx.parentElement?.offsetHeight
+	});
 
     // CRITICAL: Force canvas size BEFORE Chart.js initialization
     this.forceCanvasSize(ctx, 600, 300);
