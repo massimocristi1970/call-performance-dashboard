@@ -284,35 +284,30 @@ class DataLoader {
   }
 
   isValidRow(row, key) {
-    if (Object.values(row).every(v => isBlank(v))) {
-      console.log('Row rejected: completely blank');
+	if (Object.values(row).every(v => isBlank(v))) {
+	  console.log('Row rejected: completely blank');
       return false;
-    }
+	}
 
-    if (key === 'outbound') {
-      const hasDate = !isBlank(row.Date);
+	if (key === 'outbound') {
       const hasAgent = !isBlank(row.Agent);
-      const hasCallData = cleanNumber(row['Total Calls']) > 0;
-      
-      console.log('Outbound validation:', { hasDate, hasAgent, hasCallData, date: row.Date, agent: row.Agent, totalCalls: row['Total Calls'] });
-      return hasDate && hasAgent && hasCallData;
+      console.log('Outbound validation:', { hasAgent, agent: row.Agent });
+      return hasAgent;
     }
 
-    if (key === 'fcr') {
-      const hasValidDate = !isBlank(row.Year) && !isBlank(row.Month) && !isBlank(row.Date) &&
-                           !isTotalLike(row.Year) && !isTotalLike(row.Month) && !isTotalLike(row.Date);
-      const hasCount = cleanNumber(row.Count) > 0;
-      
-      console.log('FCR validation:', { hasValidDate, hasCount, year: row.Year, month: row.Month, date: row.Date, count: row.Count });
-      return hasValidDate && hasCount;
+	if (key === 'fcr') {
+      const hasYear = !isBlank(row.Year);
+      console.log('FCR validation:', { hasYear, year: row.Year });
+      return hasYear;
     }
 
-    if (key === 'inbound') {
+	if (key === 'inbound') {
       return !isBlank(row['Call ID']);
     }
 
-    return true;
+	return true;
   }
+
 
   filterByDateRange(key, startDate, endDate) {
     const data = this.data[key] || [];
