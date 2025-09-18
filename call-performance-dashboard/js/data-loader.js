@@ -117,67 +117,54 @@ class DataLoader {
     return out;
   }
 
-  processRow(row, map, key) {
-    // copy with cleaned keys
-    const r = {};
-    Object.keys(row).forEach((k) => {
-      const ck = k.trim();
-      if (ck) r[ck] = row[k];
-    });
+  processRow(row, fieldMappings) {
+  const processed = {};
 
-    // --- Build date_parsed ---
-// FCR: compose from Year/Month/Date (day) OR fall back to parsing the "Date" column if it's a full date
-if (key === 'fcr') {
-  const y = cleanNumber(row.Year);
-  const m = cleanNumber(row.Month);
-  const d = cleanNumber(row.Date);
+  // Copy original row with cleaned keys
+  Object.keys(row).forEach((key) => {
+    const cleanKey = key.trim();
+    if (cleanKey) processed[cleanKey] = row[key];
+  });
 
-  if (y && m && d) {
-    const dt = new Date(y, m - 1, d);
-    if (!isNaN(dt.getTime())) r.date_parsed = dt;
+  // -------- DATE: build a real parsed date --------
+  // FCR: combine Year + Month + Date (day-of-month)
+  if (('Year' in processed) || ('Month' in processed) || ('Date' in processed)) {
+    const y = cleanNumber(processed.Year);
+    const m = cleanNumber(processed.Month);
+    const d = cleanNumber(processed.Date);
+    if (y && m && d) {
+      const dt = new Date(y, m - 1, d);
+      if (!isNaN(dt.getTime())) processed.date_parsed = dt;
+    }
   }
 
-  // Fallback: some files have a proper full date string in "Date" (not just day-of-month)
-  if (!r.date_parsed && row.Date) {
-    const tryFull = parseDate(row.Date);
-    if (tryFull) r.date_parsed = tryFull;
+  // Fallback to a mapped single "Date" field (handles Outbound and any full-date strings)
+  if (!processed.date_parsed) {
+    const dateField = this.findBestMatch(Object.keys(processed), fieldMappings.date || []);
+    if (dateField && processed[dateField]) {
+      const pd = parseDate(processed[dateField]);
+      if (pd) processed.date_parsed = pd;
+    }
   }
+
+  // -------- INBOUND numeric helpers (averages) --------
+  const durField  = this.findBestMatch(Object.keys(processed), fieldMappings.duration || []);
+  const waitField = this.findBestMatch(Object.keys(processed), fieldMappings.waitTime || []);
+  if (durField)  processed.duration_numeric  = cleanNumber(processed[durField]);
+  if (waitField) processed.waitTime_numeric  = cleanNumber(processed[waitField]);
+
+  // -------- OUTBOUND numeric totals --------
+  if ('Total Calls' in processed)            processed.TotalCalls_numeric        = cleanNumber(processed['Total Calls']);
+  if ('Total Call Duration' in processed)    processed.TotalCallDuration_numeric = cleanNumber(processed['Total Call Duration']);
+  if ('Answered Calls' in processed)         processed.AnsweredCalls_numeric     = cleanNumber(processed['Answered Calls']);
+  if ('Missed Calls' in processed)           processed.MissedCalls_numeric       = cleanNumber(processed['Missed Calls']);
+  if ('Voicemail Calls' in processed)        processed.VoicemailCalls_numeric    = cleanNumber(processed['Voicemail Calls']);
+
+  // -------- FCR numeric --------
+  if ('Count' in processed)                  processed.Count_numeric             = cleanNumber(processed['Count']);
+
+  return processed;
 }
-
-
-    // Generic mapped date (if not already set)
-    if (!r.date_parsed) {
-      const dateField = this.findBestMatch(Object.keys(r), map.date || []);
-      if (dateField && r[dateField]) {
-        const pd = parseDate(r[dateField]);
-        if (pd) r.date_parsed = pd;
-      }
-    }
-
-    // Inbound numeric helpers
-    if (key === 'inbound') {
-      const durF = this.findBestMatch(Object.keys(r), map.duration || []);
-      const waitF = this.findBestMatch(Object.keys(r), map.waitTime || []);
-      if (durF) r.duration_numeric = cleanNumber(r[durF]);
-      if (waitF) r.waitTime_numeric = cleanNumber(r[waitF]);
-    }
-
-    // Outbound numeric totals
-    if (key === 'outbound') {
-      r.TotalCalls_numeric = cleanNumber(r['Total Calls']);
-      r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
-      r.AnsweredCalls_numeric = cleanNumber(r['Answered Calls']);
-      r.MissedCalls_numeric = cleanNumber(r['Missed Calls']);
-      r.VoicemailCalls_numeric = cleanNumber(r['Voicemail Calls']);
-    }
-
-    // FCR count
-    if (key === 'fcr') {
-      r.Count_numeric = cleanNumber(r['Count']);
-    }
-
-    return r;
-  }
 
   findBestMatch(headers, candidates) {
     const norm = headers.map((h) => ({ orig: h, norm: normalizeHeader(h) }));
@@ -201,23 +188,23 @@ if (key === 'fcr') {
     return { start: dates[0], end: dates[dates.length - 1], count: dates.length };
   }
 
-  filterByDateRange(key, startDate, endDate) {
-  const data = this.data[key] || [];
+  filterByDateRange(sourceKey, startDate, endDate) {
+  const data = this.data[sourceKey] || [];
   if (!startDate || !endDate) return data;
 
   const s = parseDate(startDate);
   const e = parseDate(endDate);
   if (!s || !e) return data;
 
-  // 🔸 If this dataset has no parsed dates at all, don't filter it out
+  // If this dataset has no parsed dates at all, skip filtering (show the data)
   const hasAnyDate = data.some(r => r.date_parsed instanceof Date && !isNaN(r.date_parsed));
   if (!hasAnyDate) return data;
 
-  const eod = new Date(e);
-  eod.setHours(23, 59, 59, 999);
+  const eod = new Date(e); eod.setHours(23, 59, 59, 999);
 
   return data.filter(r => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
 }
+
 
 
   getData(key, filters = {}) {
