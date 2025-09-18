@@ -1,4 +1,4 @@
-// js/data-loader.js
+// js/data-loader.js - Correct Fix for DD/MM/YYYY dates
 import { CONFIG, getFieldMapping } from './config.js';
 import {
   showError,
@@ -87,7 +87,7 @@ class DataLoader {
     const parsed = await this.parseCSV(text);
     const data = this.processData(parsed, key);
 
-    // compute dateRange inline (avoid calling a method)
+    // compute dateRange inline
     const dateRange = (() => {
       const dates = data
         .map(r => r.date_parsed)
@@ -112,7 +112,7 @@ class DataLoader {
     return new Promise((resolve, reject) => {
       Papa.parse(text, {
         header: true,
-        skipEmptyLines: 'greedy', // ignore whitespace-only lines
+        skipEmptyLines: 'greedy',
         dynamicTyping: false,
         delimitersToGuess: [',', '\t', ';', '|'],
         transformHeader: (h) => h.trim().replace(/^\uFEFF/, ''),
@@ -138,7 +138,6 @@ class DataLoader {
     return out;
   }
 
-  // sourceKey distinguishes inbound/outbound/fcr logic
   processRow(row, map, sourceKey) {
     const r = {};
     Object.keys(row).forEach(k => {
@@ -146,42 +145,45 @@ class DataLoader {
       if (ck) r[ck] = row[k];
     });
 
-    // --- Build date_parsed ---
+    // --- Date parsing for all datasets ---
     if (sourceKey === 'fcr') {
-      // FCR: Year + Month + Date (day-of-month)
-      let year = null;
-      let month = null;
-      let day = null;
-
-      // Try different possible column names for date components
-      if (r.Year || r.year) year = Number(r.Year || r.year);
-      if (r.Month || r.month) month = Number(r.Month || r.month);
-      if (r.Date || r.date || r.Day || r.day) day = Number(r.Date || r.date || r.Day || r.day);
-
-      if (year && month && day && year > 1900 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      // FCR: Year + Month + Date columns
+      const year = cleanNumber(r.Year);
+      const month = cleanNumber(r.Month);
+      const day = cleanNumber(r.Date);
+      
+      if (year > 1900 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
         const dt = new Date(year, month - 1, day);
         if (!isNaN(dt)) {
           r.date_parsed = dt;
           r.__chartDate = dt.toISOString().split('T')[0];
         }
       }
-
-      // Fallback if columns are different or if we need to parse a full date string
-      if (!r.date_parsed) {
-        const dateField = this.findBestMatch(Object.keys(r), ['Date', 'date', 'Date/Time', 'datetime']);
-        if (dateField && r[dateField] && !isTotalLike(r[dateField])) {
-          const pd = parseDate(r[dateField]);
-          if (pd) {
-            r.date_parsed = pd;
-            r.__chartDate = pd.toISOString().split('T')[0];
-          }
-        }
-      }
+      
+      r.Count_numeric = cleanNumber(r.Count);
     }
 
-    // Generic mapped date (Inbound/Outbound etc.)
-    if (!r.date_parsed) {
-      const dateField = this.findBestMatch(Object.keys(r), map.date || []);
+    if (sourceKey === 'outbound') {
+      // Outbound has Date column in DD/MM/YYYY format
+      if (r.Date) {
+        const pd = parseDate(r.Date);
+        if (pd) {
+          r.date_parsed = pd;
+          r.__chartDate = pd.toISOString().split('T')[0];
+        }
+      }
+      
+      // Process numeric fields
+      r.TotalCalls_numeric = cleanNumber(r['Total Calls']);
+      r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
+      r.AnsweredCalls_numeric = cleanNumber(r['Answered Calls']);
+      r.MissedCalls_numeric = cleanNumber(r['Missed Calls']);
+      r.VoicemailCalls_numeric = cleanNumber(r['Voicemail Calls']);
+    }
+
+    if (sourceKey === 'inbound') {
+      // Keep inbound processing exactly the same
+      const dateField = this.findBestMatch(Object.keys(r), map.date || ['Date/Time']);
       if (dateField && r[dateField]) {
         const pd = parseDate(r[dateField]);
         if (pd) {
@@ -189,35 +191,11 @@ class DataLoader {
           r.__chartDate = pd.toISOString().split('T')[0];
         }
       }
-    }
 
-    // --- Fallback for chart date if parsing failed ---
-    if (!r.__chartDate) {
-      const dateFields = ['Date/Time', 'Date', 'date', 'datetime', ...((map.date || []))];
-      const df = this.findBestMatch(Object.keys(r), dateFields);
-      if (df && r[df] && !isTotalLike(r[df])) {
-        r.__chartDate = String(r[df]).trim();
-      }
-    }
-
-    // --- Numeric helpers ---
-    if (sourceKey === 'inbound') {
-      const durF  = this.findBestMatch(Object.keys(r), map.duration || ['Talk Time', 'Duration']);
-      const waitF = this.findBestMatch(Object.keys(r), map.waitTime || ['Wait Time', 'Queue Time']);
-      if (durF)  r.duration_numeric = cleanNumber(r[durF]);
+      const durF = this.findBestMatch(Object.keys(r), map.duration || ['Talk Time']);
+      const waitF = this.findBestMatch(Object.keys(r), map.waitTime || ['Wait Time']);
+      if (durF) r.duration_numeric = cleanNumber(r[durF]);
       if (waitF) r.waitTime_numeric = cleanNumber(r[waitF]);
-    }
-
-    if (sourceKey === 'outbound') {
-      r.TotalCalls_numeric        = cleanNumber(r['Total Calls']);
-      r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
-      r.AnsweredCalls_numeric     = cleanNumber(r['Answered Calls']);
-      r.MissedCalls_numeric       = cleanNumber(r['Missed Calls']);
-      r.VoicemailCalls_numeric    = cleanNumber(r['Voicemail Calls']);
-    }
-
-    if (sourceKey === 'fcr') {
-      r.Count_numeric = cleanNumber(r['Count']) || cleanNumber(r['count']);
     }
 
     return r;
@@ -233,39 +211,34 @@ class DataLoader {
     return null;
   }
 
-  // Keep only meaningful rows per dataset
   isValidRow(row, key) {
     // Drop completely blank rows
     if (Object.values(row).every(v => isBlank(v))) return false;
 
     if (key === 'outbound') {
-      // Drop totals/footer lines
-      if (isTotalLike(row.Date) || isTotalLike(row.Agent)) return false;
-
-      const hasSomeMetric =
-        (Number.isFinite(row.TotalCalls_numeric) && row.TotalCalls_numeric > 0) ||
-        (Number.isFinite(row.AnsweredCalls_numeric) && row.AnsweredCalls_numeric > 0) ||
-        (Number.isFinite(row.MissedCalls_numeric) && row.MissedCalls_numeric > 0) ||
-        (Number.isFinite(row.VoicemailCalls_numeric) && row.VoicemailCalls_numeric > 0);
-
-      return hasSomeMetric;
+      // Must have a date, agent, and some call data
+      const hasDate = !isBlank(row.Date);
+      const hasAgent = !isBlank(row.Agent);
+      const hasCallData = cleanNumber(row['Total Calls']) > 0 || 
+                         cleanNumber(row['Answered Calls']) > 0 || 
+                         cleanNumber(row['Missed Calls']) > 0 ||
+                         cleanNumber(row['Voicemail Calls']) > 0;
+      
+      return hasDate && hasAgent && hasCallData;
     }
 
     if (key === 'fcr') {
-      // Skip total rows
-      if (isTotalLike(row.Date) || isTotalLike(row.Year) || isTotalLike(row.Month)) return false;
-
-      // Must have a count and some kind of date info
-      const hasCount = Number.isFinite(row.Count_numeric) && row.Count_numeric > 0;
-      const hasDate = !!row.date_parsed || !!row.__chartDate;
-
-      return hasCount && hasDate;
+      // Must have proper date components and count data
+      const hasValidDate = !isBlank(row.Year) && !isBlank(row.Month) && !isBlank(row.Date) &&
+                           !isTotalLike(row.Year) && !isTotalLike(row.Month) && !isTotalLike(row.Date);
+      const hasCount = cleanNumber(row.Count) > 0;
+      
+      return hasValidDate && hasCount;
     }
 
     if (key === 'inbound') {
-      // Require a Call ID-like row (prevents headers/footers)
-      const hasId = !isBlank(row['Call ID']);
-      return hasId;
+      // Keep inbound validation exactly the same
+      return !isBlank(row['Call ID']);
     }
 
     return true;
@@ -279,13 +252,7 @@ class DataLoader {
     const e = parseDate(endDate);
     if (!s || !e) return data;
 
-    // For outbound and FCR, be very permissive with date filtering
-    // to prevent blank pages
-    if (key === 'outbound' || key === 'fcr') {
-      return data; // Don't filter by date for these datasets
-    }
-
-    // Apply date filtering only to inbound data
+    // Check if this dataset has parseable dates
     const hasAnyDate = data.some(r => r.date_parsed instanceof Date && !isNaN(r.date_parsed));
     if (!hasAnyDate) return data;
 
@@ -299,9 +266,14 @@ class DataLoader {
     const original = this.data[key] || [];
     let data = original;
 
-    // Only apply date filtering to inbound data
-    if (filters.startDate && filters.endDate && key === 'inbound') {
-      data = this.filterByDateRange(key, filters.startDate, filters.endDate);
+    // Apply date filtering to all datasets that have valid dates
+    if (filters.startDate && filters.endDate) {
+      const filtered = this.filterByDateRange(key, filters.startDate, filters.endDate);
+      // Only use filtered results if we actually have some data after filtering
+      // This prevents blank pages when date ranges are too restrictive
+      if (filtered.length > 0 || key === 'inbound') {
+        data = filtered;
+      }
     }
 
     // Agent filter

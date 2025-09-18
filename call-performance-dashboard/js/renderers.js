@@ -1,4 +1,4 @@
-// js/renderers.js
+// js/renderers.js - Corrected version
 import { CONFIG, getKPIConfig, getFieldMapping } from './config.js';
 import { formatNumber, isAbandoned, cleanNumber } from './utils.js';
 import dataLoader from './data-loader.js';
@@ -9,16 +9,8 @@ class PageRenderer {
   updateFilters(filters) { this.currentFilters = { ...filters }; }
 
   async renderPage(pageKey, containerId){
-    let data;
-    
-    // For outbound and FCR, use unfiltered data to prevent blank pages
-    // For inbound, apply filters normally
-    if (pageKey === 'outbound' || pageKey === 'fcr') {
-      data = dataLoader.getData(pageKey, {}); // No date filters
-    } else {
-      // Apply filters for inbound data
-      data = dataLoader.getData(pageKey, this.currentFilters || {});
-    }
+    // Apply current filters to all datasets
+    let data = dataLoader.getData(pageKey, this.currentFilters || {});
 
     const container = document.getElementById(containerId);
     if(!container) return;
@@ -107,7 +99,7 @@ class PageRenderer {
       return;
     }
 
-    // Inbound
+    // Inbound - keep exactly the same
     const idA = `${pageKey}-calls-over-time`;
     grid.appendChild(this.chartWrap('Inbound Calls Over Time', idA));
     chartManager.createCallsOverTimeChart(idA, data, {
