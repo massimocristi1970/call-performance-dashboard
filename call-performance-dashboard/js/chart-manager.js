@@ -1,527 +1,244 @@
-// Chart management module
-import { CONFIG, getColorScheme } from './config.js';
-import { 
-  generateId, 
-  formatNumber, 
-  formatDate, 
-  groupBy, 
-  aggregateByPeriod,
-  deepClone 
-} from './utils.js';
+// js/chart-manager.js
+import { cleanNumber, parseDate } from './utils.js';
 
 class ChartManager {
   constructor() {
-    this.charts = new Map();
-    this.defaultOptions = deepClone(CONFIG.chartDefaults);
+    this.instances = new Map(); // id -> Chart
+  }
+
+  _destroyIfExists(id) {
+    const existing = this.instances.get(id);
+    if (existing) {
+      existing.destroy();
+      this.instances.delete(id);
+    }
   }
 
   /**
-   * Create a line chart showing trends over time
+   * Create/replace a time-series chart.
+   * opts:
+   *  - dateField: string (required) e.g. "__chartDate" or "date_parsed"
+   *  - valueField: string | null (optional). If omitted, counts rows.
+   *  - color: string (optional)
+   *  - aggregate: "sum" | "count" (auto: "sum" if valueField provided, else "count")
    */
-  createLineChart(containerId, data, options = {}) {
-    const config = {
+  createCallsOverTimeChart(id, rows, opts = {}) {
+    const {
+      dateField,
+      valueField = null,
+      color = '#3b82f6',
+      aggregate = valueField ? 'sum' : 'count'
+    } = opts;
+
+    this._destroyIfExists(id);
+
+    // Map -> aggregate by day
+    const bucket = new Map(); // "YYYY-MM-DD" -> number
+    for (const r of rows) {
+      let d = r[dateField];
+
+      // Normalize date — support Date object or string
+      let dt = null;
+      if (d instanceof Date) {
+        dt = isNaN(d) ? null : d;
+      } else if (typeof d === 'string' && d.trim()) {
+        // try parse ISO or general date
+        const tryIso = new Date(d);
+        dt = isNaN(tryIso) ? parseDate(d) : tryIso;
+      }
+
+      if (!dt || isNaN(dt)) continue;
+
+      const key = dt.toISOString().slice(0, 10); // YYYY-MM-DD
+
+      let v = 1;
+      if (valueField) {
+        const raw = r[valueField];
+        v = typeof raw === 'number' ? raw : cleanNumber(raw);
+        if (!Number.isFinite(v)) v = 0;
+      }
+
+      const prev = bucket.get(key) || 0;
+      bucket.set(key, aggregate === 'count' ? prev + 1 : prev + v);
+    }
+
+    // If nothing bucketed, still render an empty chart (avoid crashing)
+    const keys = Array.from(bucket.keys()).sort();
+    const labels = keys;
+    const data = keys.map(k => bucket.get(k));
+
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
+
+    const chart = new window.Chart(ctx, {
       type: 'line',
       data: {
-        labels: options.labels || [],
+        labels,
         datasets: [{
-          label: options.label || 'Data',
-          data: options.data || [],
-          borderColor: options.color || getColorScheme('primary')[0],
-          backgroundColor: `${options.color || getColorScheme('primary')[0]}20`,
-          fill: options.fill || false,
-          tension: options.tension || 0.2,
-          pointBackgroundColor: options.color || getColorScheme('primary')[0],
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2,
-          pointRadius: 4,
-          pointHoverRadius: 6
+          label: valueField ? valueField : 'Count',
+          data,
+          borderColor: color,
+          backgroundColor: color + '33',
+          fill: true,
+          tension: 0.25,
+          pointRadius: 2
         }]
       },
       options: {
-        ...this.defaultOptions,
-        ...options.chartOptions,
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true }
+        },
         plugins: {
-          ...this.defaultOptions.plugins,
-          ...options.chartOptions?.plugins,
+          legend: { display: false },
           tooltip: {
-            ...this.defaultOptions.plugins.tooltip,
             callbacks: {
-              label: (context) => {
-                const value = context.parsed.y;
-                const format = options.valueFormat || 'number';
-                return `${context.dataset.label}: ${formatNumber(value, format)}`;
+              label: (ctx) => {
+                const val = ctx.parsed.y;
+                return `${val}`;
               }
             }
           }
         }
       }
-    };
+    });
 
-    return this.createChart(containerId, config);
+    this.instances.set(id, chart);
   }
 
   /**
-   * Create a bar chart for categorical data
+   * Simple doughnut chart (e.g., outcomes).
+   * dataSpec: { labels: string[], data: number[] }
    */
-  createBarChart(containerId, data, options = {}) {
-    const colors = options.colors || getColorScheme('mixed');
-    
-    const config = {
-      type: options.horizontal ? 'bar' : 'bar',
-      data: {
-        labels: options.labels || [],
-        datasets: [{
-          label: options.label || 'Data',
-          data: options.data || [],
-          backgroundColor: options.multiColor ? colors : colors[0],
-          borderColor: options.multiColor ? colors.map(c => c) : colors[0],
-          borderWidth: 1,
-          borderRadius: 4
-        }]
-      },
-      options: {
-        ...this.defaultOptions,
-        indexAxis: options.horizontal ? 'y' : 'x',
-        ...options.chartOptions,
-        plugins: {
-          ...this.defaultOptions.plugins,
-          ...options.chartOptions?.plugins,
-          tooltip: {
-            ...this.defaultOptions.plugins.tooltip,
-            callbacks: {
-              label: (context) => {
-                const value = context.parsed.y || context.parsed.x;
-                const format = options.valueFormat || 'number';
-                return `${context.dataset.label}: ${formatNumber(value, format)}`;
-              }
-            }
-          }
-        }
-      }
-    };
+  createDoughnutChart(id, rows, dataSpec) {
+    this._destroyIfExists(id);
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
 
-    return this.createChart(containerId, config);
-  }
-
-  /**
-   * Create a doughnut/pie chart
-   */
-  createDoughnutChart(containerId, data, options = {}) {
-    const colors = getColorScheme('mixed');
-    
-    const config = {
+    const chart = new window.Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: options.labels || [],
+        labels: dataSpec.labels,
         datasets: [{
-          data: options.data || [],
-          backgroundColor: colors,
-          borderColor: '#fff',
-          borderWidth: 2
-        }]
-      },
-      options: {
-        ...this.defaultOptions,
-        cutout: options.cutout || '60%',
-        ...options.chartOptions,
-        plugins: {
-          ...this.defaultOptions.plugins,
-          ...options.chartOptions?.plugins,
-          tooltip: {
-            ...this.defaultOptions.plugins.tooltip,
-            callbacks: {
-              label: (context) => {
-                const value = context.parsed;
-                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                const percentage = ((value / total) * 100).toFixed(1);
-                const format = options.valueFormat || 'number';
-                return `${context.label}: ${formatNumber(value, format)} (${percentage}%)`;
-              }
-            }
-          }
-        }
-      }
-    };
-
-    return this.createChart(containerId, config);
-  }
-
-  /**
-   * Create a chart with Chart.js
-   */
-  createChart(containerId, config) {
-    const container = document.getElementById(containerId);
-    if (!container) {
-      console.error(`Container not found: ${containerId}`);
-      return null;
-    }
-
-    // Find or create canvas
-    let canvas = container.querySelector('canvas');
-    if (!canvas) {
-      canvas = document.createElement('canvas');
-      container.appendChild(canvas);
-    }
-
-    // Destroy existing chart if it exists
-    this.destroyChart(containerId);
-
-    try {
-      const chart = new Chart(canvas, config);
-      this.charts.set(containerId, chart);
-      return chart;
-    } catch (error) {
-      console.error(`Error creating chart for ${containerId}:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Destroy a specific chart
-   */
-  destroyChart(containerId) {
-    const chart = this.charts.get(containerId);
-    if (chart) {
-      chart.destroy();
-      this.charts.delete(containerId);
-    }
-  }
-
-  /**
-   * Destroy all charts
-   */
-  destroyAllCharts() {
-    this.charts.forEach(chart => chart.destroy());
-    this.charts.clear();
-  }
-
-  /**
-   * Update chart data
-   */
-  updateChart(containerId, newData, newLabels) {
-    const chart = this.charts.get(containerId);
-    if (!chart) return false;
-
-    if (newLabels) {
-      chart.data.labels = newLabels;
-    }
-    
-    if (newData) {
-      if (Array.isArray(newData)) {
-        chart.data.datasets[0].data = newData;
-      } else {
-        // Multiple datasets
-        chart.data.datasets.forEach((dataset, index) => {
-          if (newData[index]) {
-            dataset.data = newData[index];
-          }
-        });
-      }
-    }
-
-    chart.update('active');
-    return true;
-  }
-
-  /**
-   * Create calls over time chart
-   */
-  createCallsOverTimeChart(containerId, data, options = {}) {
-    const period = options.period || 'month';
-    const dateField = options.dateField || 'date';
-    const valueField = options.valueField || null;
-    const aggregated = aggregateByPeriod(data, dateField, period);
-    
-    const sortedKeys = Object.keys(aggregated).sort();
-    const labels = sortedKeys.map(key => {
-      const date = new Date(key);
-      return formatDate(date, 'chart');
-    });
-    
-    const values = sortedKeys.map(key => {
-      const periodData = aggregated[key];
-      if (valueField) {
-        return periodData.reduce((sum, row) => sum + (parseFloat(row[valueField]) || 0), 0);
-      } else {
-        return periodData.length;
-      }
-    });
-
-    return this.createLineChart(containerId, data, {
-      labels,
-      data: values,
-      label: options.label || 'Calls',
-      color: options.color || getColorScheme('primary')[0],
-      valueFormat: options.valueFormat || 'number',
-      ...options
-    });
-  }
-
-  /**
-   * Create status distribution chart
-   */
-  createStatusChart(containerId, data, statusField, options = {}) {
-    const grouped = groupBy(data, statusField);
-    const labels = Object.keys(grouped).sort();
-    const values = labels.map(label => grouped[label].length);
-
-    return this.createDoughnutChart(containerId, data, {
-      labels,
-      data: values,
-      valueFormat: options.valueFormat || 'number',
-      ...options
-    });
-  }
-
-  /**
-   * Create agent performance chart
-   */
-  createAgentChart(containerId, data, agentField, options = {}) {
-    const grouped = groupBy(data, agentField);
-    const labels = Object.keys(grouped)
-      .sort((a, b) => grouped[b].length - grouped[a].length)
-      .slice(0, options.topN || 10);
-    const values = labels.map(label => grouped[label].length);
-
-    return this.createBarChart(containerId, data, {
-      labels,
-      data: values,
-      label: options.label || 'Calls per Agent',
-      multiColor: true,
-      valueFormat: options.valueFormat || 'number',
-      ...options
-    });
-  }
-
-  /**
-   * Create duration histogram
-   */
-  createDurationChart(containerId, data, durationField, options = {}) {
-    const durations = data
-      .map(row => parseFloat(row[durationField]) || 0)
-      .filter(d => d > 0)
-      .sort((a, b) => a - b);
-
-    if (durations.length === 0) {
-      console.warn('No duration data available for chart');
-      return null;
-    }
-
-    // Create bins
-    const binCount = options.bins || 10;
-    const min = durations[0];
-    const max = durations[durations.length - 1];
-    const binSize = (max - min) / binCount;
-    
-    const bins = Array(binCount).fill(0);
-    const labels = [];
-    
-    for (let i = 0; i < binCount; i++) {
-      const start = min + (i * binSize);
-      const end = min + ((i + 1) * binSize);
-      labels.push(`${formatNumber(start, 'duration')} - ${formatNumber(end, 'duration')}`);
-    }
-    
-    durations.forEach(duration => {
-      const binIndex = Math.min(Math.floor((duration - min) / binSize), binCount - 1);
-      bins[binIndex]++;
-    });
-
-    return this.createBarChart(containerId, data, {
-      labels,
-      data: bins,
-      label: options.label || 'Call Duration Distribution',
-      color: getColorScheme('primary')[0],
-      valueFormat: 'number',
-      ...options
-    });
-  }
-
-  /**
-   * Create metric comparison chart
-   */
-  createComparisonChart(containerId, datasets, options = {}) {
-    const colors = getColorScheme('mixed');
-    
-    const chartDatasets = datasets.map((dataset, index) => ({
-      label: dataset.label,
-      data: dataset.data,
-      borderColor: colors[index % colors.length],
-      backgroundColor: `${colors[index % colors.length]}20`,
-      fill: false,
-      tension: 0.2
-    }));
-
-    const config = {
-      type: 'line',
-      data: {
-        labels: options.labels || [],
-        datasets: chartDatasets
-      },
-      options: {
-        ...this.defaultOptions,
-        ...options.chartOptions,
-        plugins: {
-          ...this.defaultOptions.plugins,
-          ...options.chartOptions?.plugins,
-          tooltip: {
-            ...this.defaultOptions.plugins.tooltip,
-            mode: 'index',
-            intersect: false,
-            callbacks: {
-              label: (context) => {
-                const value = context.parsed.y;
-                const format = options.valueFormat || 'number';
-                return `${context.dataset.label}: ${formatNumber(value, format)}`;
-              }
-            }
-          }
-        },
-        hover: {
-          mode: 'index',
-          intersect: false
-        }
-      }
-    };
-
-    return this.createChart(containerId, config);
-  }
-
-  /**
-   * Download chart as image
-   */
-  downloadChart(containerId, filename) {
-    const chart = this.charts.get(containerId);
-    if (!chart) {
-      console.error(`Chart not found: ${containerId}`);
-      return false;
-    }
-
-    try {
-      const link = document.createElement('a');
-      link.download = filename || `chart_${containerId}_${Date.now()}.png`;
-      link.href = chart.toBase64Image('image/png', 1.0);
-      link.click();
-      return true;
-    } catch (error) {
-      console.error('Error downloading chart:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Resize all charts (useful for responsive updates)
-   */
-  resizeAllCharts() {
-    this.charts.forEach(chart => {
-      chart.resize();
-    });
-  }
-
-  /**
-   * Get chart data for export
-   */
-  getChartData(containerId) {
-    const chart = this.charts.get(containerId);
-    if (!chart) return null;
-
-    return {
-      labels: chart.data.labels,
-      datasets: chart.data.datasets.map(dataset => ({
-        label: dataset.label,
-        data: dataset.data
-      }))
-    };
-  }
-
-  /**
-   * Create animated counter for KPIs
-   */
-  animateValue(element, start, end, duration = 1000, format = 'number') {
-    if (!element) return;
-
-    const startTime = performance.now();
-    const startValue = parseFloat(start) || 0;
-    const endValue = parseFloat(end) || 0;
-    const difference = endValue - startValue;
-
-    const animate = (currentTime) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Easing function
-      const easeOutQuart = 1 - Math.pow(1 - progress, 4);
-      const current = startValue + (difference * easeOutQuart);
-      
-      element.textContent = formatNumber(current, format);
-      
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      }
-    };
-
-    requestAnimationFrame(animate);
-  }
-
-  /**
-   * Create sparkline chart (mini chart for KPIs)
-   */
-  createSparkline(containerId, data, options = {}) {
-    const config = {
-      type: 'line',
-      data: {
-        labels: options.labels || data.map((_, i) => i),
-        datasets: [{
-          data: data,
-          borderColor: options.color || getColorScheme('primary')[0],
-          backgroundColor: 'transparent',
-          borderWidth: 2,
-          pointRadius: 0,
-          pointHoverRadius: 0,
-          fill: false,
-          tension: 0.2
+          data: dataSpec.data.map(v => (Number.isFinite(v) ? v : cleanNumber(v))),
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: false
-          },
-          tooltip: {
-            enabled: false
-          }
+          legend: { position: 'bottom' }
         },
+        cutout: '60%'
+      }
+    });
+
+    this.instances.set(id, chart);
+  }
+
+  /**
+   * Bar chart, single series.
+   * opts: { labels: string[], data: number[], label?: string, multiColor?: boolean }
+   */
+  createBarChart(id, rows, opts = {}) {
+    const { labels = [], data = [], label = 'Value', multiColor = false } = opts;
+    this._destroyIfExists(id);
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
+
+    const chart = new window.Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label,
+          data: data.map(v => (Number.isFinite(v) ? v : cleanNumber(v))),
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
         scales: {
-          x: {
-            display: false
-          },
-          y: {
-            display: false
-          }
+          x: { grid: { display: false } },
+          y: { beginAtZero: true }
         },
-        elements: {
-          point: {
-            radius: 0
-          }
-        },
-        animation: {
-          duration: 0
+        plugins: {
+          legend: { display: false }
         }
       }
-    };
+    });
 
-    return this.createChart(containerId, config);
+    this.instances.set(id, chart);
+  }
+
+  /**
+   * Status distribution (pie) based on a status field.
+   */
+  createStatusChart(id, rows, statusField = 'status') {
+    this._destroyIfExists(id);
+    const counts = new Map();
+    for (const r of rows) {
+      const s = (r[statusField] || 'Unknown').toString().trim();
+      counts.set(s, (counts.get(s) || 0) + 1);
+    }
+    const labels = Array.from(counts.keys());
+    const data = Array.from(counts.values());
+
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
+    const chart = new window.Chart(ctx, {
+      type: 'pie',
+      data: { labels, datasets: [{ data }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+    this.instances.set(id, chart);
+  }
+
+  /**
+   * Agent leaderboard (counts rows per agent).
+   */
+  createAgentChart(id, rows, agentField = 'agent') {
+    this._destroyIfExists(id);
+
+    const byAgent = new Map();
+    for (const r of rows) {
+      const a = (r[agentField] || 'Unknown').toString().trim();
+      byAgent.set(a, (byAgent.get(a) || 0) + 1);
+    }
+
+    const top = Array.from(byAgent.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+
+    const labels = top.map(([k]) => k);
+    const data = top.map(([, v]) => v);
+
+    const ctx = document.getElementById(id);
+    if (!ctx) return;
+
+    const chart = new window.Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ data }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true }
+        },
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    this.instances.set(id, chart);
   }
 }
 
-// Create and export singleton instance
-export const chartManager = new ChartManager();
-
-// Handle window resize
-window.addEventListener('resize', () => {
-  chartManager.resizeAllCharts();
-});
-
+const chartManager = new ChartManager();
 export default chartManager;
