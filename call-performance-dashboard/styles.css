@@ -347,20 +347,17 @@ body {
 
 /* Pages */
 .page {
-  display: block;
-  visibility: hidden;
+  display: block;          /* keep layout so canvases have size */
+  visibility: hidden;      /* hide content without collapsing */
   height: 0;
   overflow: hidden;
 }
+
 .page.active {
   visibility: visible;
   height: auto;
 }
 
-
-.page.active {
-  display: block;
-}
 
 .page-header {
   display: flex;
