@@ -19,16 +19,15 @@ window.dataLoader = dataLoader;
 window.pageRenderer = pageRenderer;
 window.chartManager = chartManager;
 
-
 class Dashboard {
   constructor() {
     this.currentPage = 'inbound';
     this.currentFilters = {};
     this.isInitialized = false;
-    
+
     // Debounced render function to avoid excessive updates
-    this.debouncedRender = debounce(() => {
-      this.renderCurrentPage();
+    this.debouncedRender = debounce(async () => {
+      await this.renderCurrentPage();
     }, CONFIG.performance.chartUpdateDebounce);
   }
 
@@ -41,23 +40,29 @@ class Dashboard {
     try {
       // Set up event listeners
       this.setupEventListeners();
-      
-      // Set default date range
+
+      // Default date range
       this.setDefaultDateRange();
-      
+
       // Load all data
       await dataLoader.loadAll();
-      
+
       // Render initial page
       await this.renderCurrentPage();
-      
-      // Set up auto-refresh if enabled
+
+      // Ensure charts fit after the first render
+      chartManager.resizeAllCharts();
+
+      // Auto-refresh
       if (CONFIG.performance.dataRefreshInterval > 0) {
         this.setupAutoRefresh();
       }
-      
+
+      // Handle page visibility (resize charts when coming back)
+      this.setupVisibilityHandling();
+
       this.isInitialized = true;
-      
+
     } catch (error) {
       console.error('Failed to initialize dashboard:', error);
       showError('Failed to initialize dashboard. Please refresh the page.');
@@ -82,7 +87,7 @@ class Dashboard {
     // Filter controls
     const applyFiltersBtn = document.getElementById('apply-filters');
     const resetFiltersBtn = document.getElementById('reset-filters');
-    
+
     if (applyFiltersBtn) {
       applyFiltersBtn.addEventListener('click', () => {
         this.applyFilters();
@@ -98,7 +103,7 @@ class Dashboard {
     // Date inputs - apply filters on change with debounce
     const dateFromInput = document.getElementById('date-from');
     const dateToInput = document.getElementById('date-to');
-    
+
     if (dateFromInput && dateToInput) {
       const debouncedFilterUpdate = debounce(() => {
         this.applyFilters();
@@ -152,7 +157,7 @@ class Dashboard {
         e.preventDefault();
         this.refreshData();
       }
-      
+
       // Ctrl/Cmd + E for export
       if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
         e.preventDefault();
@@ -186,14 +191,17 @@ class Dashboard {
       document.title = title;
     }
 
-    // Render the page
+    // ✅ Critical: wait for layout to apply `.active`, then render and resize
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await this.renderCurrentPage();
+    chartManager.resizeAllCharts();
   }
 
   /**
    * Render the current page with current filters
    */
   async renderCurrentPage() {
+    // If called before init+loadAll, avoid running
     if (!this.isInitialized && !dataLoader.data[this.currentPage]) return;
 
     try {
@@ -214,6 +222,11 @@ class Dashboard {
         default:
           console.warn(`Unknown page: ${this.currentPage}`);
       }
+
+      // ✅ Ensure charts snap to final dimensions after DOM paint
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      chartManager.resizeAllCharts();
+
     } catch (error) {
       console.error(`Error rendering ${this.currentPage} page:`, error);
       showError(`Failed to render ${this.currentPage} page`);
@@ -260,11 +273,11 @@ class Dashboard {
    */
   resetFilters() {
     const defaultRange = getDefaultDateRange();
-    
+
     // Reset form inputs
     const dateFromInput = document.getElementById('date-from');
     const dateToInput = document.getElementById('date-to');
-    
+
     if (dateFromInput) dateFromInput.value = defaultRange.start;
     if (dateToInput) dateToInput.value = defaultRange.end;
 
@@ -293,12 +306,12 @@ class Dashboard {
   setDefaultDateRange() {
     const dateFromInput = document.getElementById('date-from');
     const dateToInput = document.getElementById('date-to');
-    
+
     if (!dateFromInput || !dateToInput) return;
 
     // Try to load persisted filters first
     let defaultRange = getDefaultDateRange();
-    
+
     if (CONFIG.features.filterPersistence) {
       try {
         const stored = localStorage.getItem('dashboard_filters');
@@ -318,7 +331,7 @@ class Dashboard {
 
     dateFromInput.value = defaultRange.start;
     dateToInput.value = defaultRange.end;
-    
+
     this.currentFilters = {
       startDate: defaultRange.start,
       endDate: defaultRange.end
@@ -332,16 +345,19 @@ class Dashboard {
     try {
       // Clear existing data
       dataLoader.clear();
-      
+
       // Destroy all charts to free memory
       chartManager.destroyAllCharts();
-      
+
       // Reload all data
       await dataLoader.loadAll();
-      
+
       // Re-render current page
       await this.renderCurrentPage();
-      
+
+      // Ensure sizes are correct after refresh
+      chartManager.resizeAllCharts();
+
     } catch (error) {
       console.error('Failed to refresh data:', error);
       showError('Failed to refresh data. Please try again.');
@@ -353,7 +369,7 @@ class Dashboard {
    */
   exportCurrentData() {
     const data = dataLoader.getData(this.currentPage, this.currentFilters);
-    
+
     if (!data || data.length === 0) {
       showError('No data to export');
       return;
@@ -361,7 +377,7 @@ class Dashboard {
 
     const timestamp = new Date().toISOString().split('T')[0];
     const filename = `${this.currentPage}_data_${timestamp}.csv`;
-    
+
     exportToCsv(data, filename);
   }
 
@@ -371,7 +387,7 @@ class Dashboard {
   setupAutoRefresh() {
     setInterval(async () => {
       if (document.hidden) return; // Don't refresh when tab is not visible
-      
+
       try {
         console.log('Auto-refreshing data...');
         await this.refreshData();
@@ -420,10 +436,10 @@ class Dashboard {
    */
   handleError(error, context = 'Unknown') {
     console.error(`Dashboard error in ${context}:`, error);
-    
+
     // Show user-friendly error message
     let message = 'An unexpected error occurred.';
-    
+
     if (error.name === 'NetworkError' || error.message.includes('fetch')) {
       message = 'Network error. Please check your connection and try again.';
     } else if (error.message.includes('CSV') || error.message.includes('parse')) {
@@ -431,7 +447,7 @@ class Dashboard {
     } else if (error.message.includes('Chart')) {
       message = 'Chart rendering error. Please refresh the page.';
     }
-    
+
     showError(message);
   }
 }
