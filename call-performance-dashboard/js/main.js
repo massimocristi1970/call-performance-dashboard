@@ -117,66 +117,69 @@ class Dashboard {
   }
 
   /**
-  * Navigate to a specific page
-  */
-  async navigateToPage(page, updateHistory = true) {
-    if (page === this.currentPage) return;
+ * Navigate to a specific page
+ */
+async navigateToPage(page, updateHistory = true) {
+  if (page === this.currentPage) return;
 
-    // Update nav links
-    document.querySelectorAll('.nav-link').forEach(link => {
+  // Update navigation state
+  document.querySelectorAll('.nav-link').forEach(link => {
     link.classList.toggle('active', link.dataset.page === page);
-    });
+  });
 
-    // Toggle pages
-    document.querySelectorAll('.page').forEach(pageEl => {
-      pageEl.classList.toggle('active', pageEl.id === `${page}-page`);
-    });
+  // Show/hide pages
+  document.querySelectorAll('.page').forEach(pageEl => {
+    pageEl.classList.toggle('active', pageEl.id === `${page}-page`);
+  });
 
-    this.currentPage = page;
+  this.currentPage = page;
 
-    // Update browser history
-    if (updateHistory) {
-      const title = `Call Performance Dashboard - ${CONFIG.dataSources[page]?.name || page}`;
-      history.pushState({ page }, title, `#${page}`);
-      document.title = title;
-    }
-
-    // Render charts for this page
-    await this.renderCurrentPage();
-
-    // 👇 Force Chart.js to recalc sizes AFTER the DOM has painted
-    setTimeout(() => {
-      chartManager.resizeAllCharts();
-    }, 100);
+  // Update browser history + title
+  if (updateHistory) {
+    const title = `Call Performance Dashboard - ${CONFIG.dataSources[page]?.name || page}`;
+    history.pushState({ page }, title, `#${page}`);
+    document.title = title;
   }
 
-  async renderCurrentPage() {
-    if (!this.isInitialized && !dataLoader.data[this.currentPage]) return;
+  // IMPORTANT: Wait one animation frame so the page becomes visible
+  await new Promise(resolve => requestAnimationFrame(resolve));
 
-    try {
-      pageRenderer.updateFilters(this.currentFilters);
+  // Now render and resize
+  await this.renderCurrentPage();
+  chartManager.resizeAllCharts();
+}
 
-      switch (this.currentPage) {
-        case 'inbound':
-          await pageRenderer.renderInbound(this.currentFilters);
-          break;
-        case 'outbound':
-          await pageRenderer.renderOutbound(this.currentFilters);
-          break;
-        case 'fcr':
-          await pageRenderer.renderFCR(this.currentFilters);
-          break;
-        default:
-          console.warn(`Unknown page: ${this.currentPage}`);
-      }
+/**
+ * Render the current page with current filters
+ */
+async renderCurrentPage() {
+  if (!dataLoader.data[this.currentPage]) return;
 
-      // Ensure charts snap to correct size
-      chartManager.resizeAllCharts();
-    } catch (error) {
-      console.error(`Error rendering ${this.currentPage} page:`, error);
-      showError(`Failed to render ${this.currentPage} page`);
+  try {
+    pageRenderer.updateFilters(this.currentFilters);
+
+    switch (this.currentPage) {
+      case 'inbound':
+        await pageRenderer.renderInbound(this.currentFilters);
+        break;
+      case 'outbound':
+        await pageRenderer.renderOutbound(this.currentFilters);
+        break;
+      case 'fcr':
+        await pageRenderer.renderFCR(this.currentFilters);
+        break;
+      default:
+        console.warn(`Unknown page: ${this.currentPage}`);
     }
+
+    // Ensure charts snap to correct size after render
+    chartManager.resizeAllCharts();
+  } catch (error) {
+    console.error(`Error rendering ${this.currentPage} page:`, error);
+    showError(`Failed to render ${this.currentPage} page`);
   }
+}
+
 
   applyFilters() {
     const dateFrom = document.getElementById('date-from')?.value;
