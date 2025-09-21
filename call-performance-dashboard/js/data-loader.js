@@ -125,16 +125,16 @@ class DataLoader {
 
     // ----- FCR -----
     if (sourceKey === 'fcr') {
-      const year = cleanNumber(r.Year);
+	  const year = cleanNumber(r.Year);
       const month = cleanNumber(r.Month);
       const day = cleanNumber(r.Date);
 
       if (year > 1900) {
-        let dt = null;
+        let dt;
         if (!isNaN(month) && month >= 1 && !isNaN(day) && day >= 1) {
           dt = new Date(year, month - 1, day);
         } else {
-          // fallback to Jan 1 if Month/Date missing or "Total"
+          // fallback for "Total" or missing values → Jan 1
           dt = new Date(year, 0, 1);
         }
         r.date_parsed = dt;
@@ -143,6 +143,7 @@ class DataLoader {
 
       r.Count_numeric = cleanNumber(r.Count);
     }
+
 
     // ----- OUTBOUND -----
     if (sourceKey === 'outbound') {
@@ -193,18 +194,26 @@ class DataLoader {
   }
 
   isValidRow(row, key) {
-  if (Object.values(row).every(v => isBlank(v))) return false;
+	// Reject rows that are entirely blank
+	if (Object.values(row).every(v => isBlank(v))) return false;
 
-  if (key === 'outbound' || key === 'fcr') {
-    return true; // 🚨 force all outbound & FCR rows through
-  }
+	if (key === 'outbound') {
+		// ✅ Only require Agent
+		return !isBlank(row.Agent);
+	}
 
-  if (key === 'inbound') {
-    return !isBlank(row['Call ID']);
-  }
+	if (key === 'fcr') {
+		// ✅ Only require Year
+		return !isBlank(row.Year);
+	}
 
-  return true;
-}
+	if (key === 'inbound') {
+		// Unchanged: require Call ID
+		return !isBlank(row['Call ID']);
+	}
+
+	return true;
+	}
 
 
   filterByDateRange(key, startDate, endDate) {

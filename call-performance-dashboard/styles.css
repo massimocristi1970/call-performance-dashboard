@@ -347,8 +347,16 @@ body {
 
 /* Pages */
 .page {
-  display: none;
+  display: block;
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
 }
+.page.active {
+  visibility: visible;
+  height: auto;
+}
+
 
 .page.active {
   display: block;
