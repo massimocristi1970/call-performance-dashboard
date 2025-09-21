@@ -117,33 +117,37 @@ class Dashboard {
   }
 
   /**
-   * Navigate to a specific page
-   */
+  * Navigate to a specific page
+  */
   async navigateToPage(page, updateHistory = true) {
     if (page === this.currentPage) return;
 
-    // Update navigation state
+    // Update nav links
     document.querySelectorAll('.nav-link').forEach(link => {
-      link.classList.toggle('active', link.dataset.page === page);
+    link.classList.toggle('active', link.dataset.page === page);
     });
 
-    // Show/hide pages
+    // Toggle pages
     document.querySelectorAll('.page').forEach(pageEl => {
       pageEl.classList.toggle('active', pageEl.id === `${page}-page`);
     });
 
     this.currentPage = page;
 
+    // Update browser history
     if (updateHistory) {
       const title = `Call Performance Dashboard - ${CONFIG.dataSources[page]?.name || page}`;
       history.pushState({ page }, title, `#${page}`);
       document.title = title;
     }
 
-    // Wait a tick so the page becomes visible, then render + resize
-    await new Promise(resolve => requestAnimationFrame(resolve));
+    // Render charts for this page
     await this.renderCurrentPage();
-    chartManager.resizeAllCharts();
+
+    // 👇 Force Chart.js to recalc sizes AFTER the DOM has painted
+    setTimeout(() => {
+      chartManager.resizeAllCharts();
+    }, 100);
   }
 
   async renderCurrentPage() {
