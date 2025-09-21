@@ -125,16 +125,16 @@ class DataLoader {
 
     // ----- FCR -----
     if (sourceKey === 'fcr') {
-	  const year = cleanNumber(r.Year);
+      const year = cleanNumber(r.Year);
       const month = cleanNumber(r.Month);
-      const day = cleanNumber(r.Date);
+	  const day = cleanNumber(r.Date);
 
       if (year > 1900) {
         let dt;
         if (!isNaN(month) && month >= 1 && !isNaN(day) && day >= 1) {
           dt = new Date(year, month - 1, day);
         } else {
-          // fallback for "Total" or missing values → Jan 1
+          // fallback for "Total" or missing values
           dt = new Date(year, 0, 1);
         }
         r.date_parsed = dt;
@@ -143,6 +143,7 @@ class DataLoader {
 
       r.Count_numeric = cleanNumber(r.Count);
     }
+
 
 
     // ----- OUTBOUND -----
@@ -203,9 +204,9 @@ class DataLoader {
 	}
 
 	if (key === 'fcr') {
-		// ✅ Only require Year
-		return !isBlank(row.Year);
-	}
+	  return !isBlank(row.Year); // only require Year
+    }
+
 
 	if (key === 'inbound') {
 		// Unchanged: require Call ID
