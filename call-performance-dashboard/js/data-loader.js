@@ -192,24 +192,19 @@ class DataLoader {
   }
 
   isValidRow(row, key) {
-    if (Object.values(row).every(v => isBlank(v))) return false;
+  if (Object.values(row).every(v => isBlank(v))) return false;
 
-    if (key === 'outbound') {
-      // Only require Agent (so rows with Total Calls = 0 are kept)
-      return !isBlank(row.Agent);
-    }
-
-    if (key === 'fcr') {
-      // Only require Year (so "Total" rows survive too)
-      return !isBlank(row.Year);
-    }
-
-    if (key === 'inbound') {
-      return !isBlank(row['Call ID']);
-    }
-
-    return true;
+  if (key === 'outbound' || key === 'fcr') {
+    return true; // 🚨 force all outbound & FCR rows through
   }
+
+  if (key === 'inbound') {
+    return !isBlank(row['Call ID']);
+  }
+
+  return true;
+}
+
 
   filterByDateRange(key, startDate, endDate) {
     const data = this.data[key] || [];
