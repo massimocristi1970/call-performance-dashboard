@@ -25,55 +25,34 @@ class Dashboard {
     this.currentFilters = {};
     this.isInitialized = false;
 
-    // Debounced render function to avoid excessive updates
     this.debouncedRender = debounce(async () => {
       await this.renderCurrentPage();
     }, CONFIG.performance.chartUpdateDebounce);
   }
 
-  /**
-   * Initialize the dashboard
-   */
   async init() {
     if (this.isInitialized) return;
 
     try {
-      // Set up event listeners
       this.setupEventListeners();
-
-      // Default date range
       this.setDefaultDateRange();
-
-      // Load all data
       await dataLoader.loadAll();
-
-      // Render initial page
       await this.renderCurrentPage();
+      chartManager.resizeAllCharts(); // ensure initial charts fit
 
-      // Ensure charts fit after the first render
-      chartManager.resizeAllCharts();
-
-      // Auto-refresh
       if (CONFIG.performance.dataRefreshInterval > 0) {
         this.setupAutoRefresh();
       }
 
-      // Handle page visibility (resize charts when coming back)
       this.setupVisibilityHandling();
-
       this.isInitialized = true;
-
     } catch (error) {
       console.error('Failed to initialize dashboard:', error);
       showError('Failed to initialize dashboard. Please refresh the page.');
     }
   }
 
-  /**
-   * Set up all event listeners
-   */
   setupEventListeners() {
-    // Navigation links
     document.querySelectorAll('.nav-link').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
@@ -84,64 +63,39 @@ class Dashboard {
       });
     });
 
-    // Filter controls
     const applyFiltersBtn = document.getElementById('apply-filters');
     const resetFiltersBtn = document.getElementById('reset-filters');
 
     if (applyFiltersBtn) {
-      applyFiltersBtn.addEventListener('click', () => {
-        this.applyFilters();
-      });
+      applyFiltersBtn.addEventListener('click', () => this.applyFilters());
     }
-
     if (resetFiltersBtn) {
-      resetFiltersBtn.addEventListener('click', () => {
-        this.resetFilters();
-      });
+      resetFiltersBtn.addEventListener('click', () => this.resetFilters());
     }
 
-    // Date inputs - apply filters on change with debounce
     const dateFromInput = document.getElementById('date-from');
     const dateToInput = document.getElementById('date-to');
 
     if (dateFromInput && dateToInput) {
-      const debouncedFilterUpdate = debounce(() => {
-        this.applyFilters();
-      }, 1000);
-
+      const debouncedFilterUpdate = debounce(() => this.applyFilters(), 1000);
       dateFromInput.addEventListener('change', debouncedFilterUpdate);
       dateToInput.addEventListener('change', debouncedFilterUpdate);
     }
 
-    // Refresh button
     const refreshBtn = document.getElementById('refresh-btn');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', () => {
-        this.refreshData();
-      });
-    }
+    if (refreshBtn) refreshBtn.addEventListener('click', () => this.refreshData());
 
-    // Export button
     const exportBtn = document.getElementById('export-btn');
-    if (exportBtn) {
-      exportBtn.addEventListener('click', () => {
-        this.exportCurrentData();
-      });
-    }
+    if (exportBtn) exportBtn.addEventListener('click', () => this.exportCurrentData());
 
-    // Error close button
     const errorCloseBtn = document.getElementById('error-close');
-    if (errorCloseBtn) {
-      errorCloseBtn.addEventListener('click', hideError);
-    }
+    if (errorCloseBtn) errorCloseBtn.addEventListener('click', hideError);
 
-    // Handle browser back/forward
     window.addEventListener('popstate', (e) => {
       const page = e.state?.page || 'inbound';
       this.navigateToPage(page, false);
     });
 
-    // Handle window resize for charts
     let resizeTimeout;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimeout);
@@ -150,15 +104,11 @@ class Dashboard {
       }, 250);
     });
 
-    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-      // Ctrl/Cmd + R for refresh
       if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
         e.preventDefault();
         this.refreshData();
       }
-
-      // Ctrl/Cmd + E for export
       if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
         e.preventDefault();
         this.exportCurrentData();
@@ -184,31 +134,24 @@ class Dashboard {
 
     this.currentPage = page;
 
-    // Update browser history
     if (updateHistory) {
       const title = `Call Performance Dashboard - ${CONFIG.dataSources[page]?.name || page}`;
       history.pushState({ page }, title, `#${page}`);
       document.title = title;
     }
 
-    // ✅ Critical: wait for layout to apply `.active`, then render and resize
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    // Wait a tick so the page becomes visible, then render + resize
+    await new Promise(resolve => requestAnimationFrame(resolve));
     await this.renderCurrentPage();
     chartManager.resizeAllCharts();
   }
 
-  /**
-   * Render the current page with current filters
-   */
   async renderCurrentPage() {
-    // If called before init+loadAll, avoid running
     if (!this.isInitialized && !dataLoader.data[this.currentPage]) return;
 
     try {
-      // Update filters in renderer
       pageRenderer.updateFilters(this.currentFilters);
 
-      // Render based on current page
       switch (this.currentPage) {
         case 'inbound':
           await pageRenderer.renderInbound(this.currentFilters);
@@ -223,24 +166,18 @@ class Dashboard {
           console.warn(`Unknown page: ${this.currentPage}`);
       }
 
-      // ✅ Ensure charts snap to final dimensions after DOM paint
-      await new Promise(resolve => requestAnimationFrame(resolve));
+      // Ensure charts snap to correct size
       chartManager.resizeAllCharts();
-
     } catch (error) {
       console.error(`Error rendering ${this.currentPage} page:`, error);
       showError(`Failed to render ${this.currentPage} page`);
     }
   }
 
-  /**
-   * Apply current filter values
-   */
   applyFilters() {
     const dateFrom = document.getElementById('date-from')?.value;
     const dateTo = document.getElementById('date-to')?.value;
 
-    // Validate date range
     if (dateFrom && dateTo) {
       const validation = validateDateRange(dateFrom, dateTo);
       if (!validation.valid) {
@@ -249,13 +186,11 @@ class Dashboard {
       }
     }
 
-    // Update current filters
     this.currentFilters = {
       startDate: dateFrom || null,
       endDate: dateTo || null
     };
 
-    // Store filters in localStorage if feature is enabled
     if (CONFIG.features.filterPersistence) {
       try {
         localStorage.setItem('dashboard_filters', JSON.stringify(this.currentFilters));
@@ -264,30 +199,22 @@ class Dashboard {
       }
     }
 
-    // Re-render current page
     this.debouncedRender();
   }
 
-  /**
-   * Reset filters to defaults
-   */
   resetFilters() {
     const defaultRange = getDefaultDateRange();
-
-    // Reset form inputs
     const dateFromInput = document.getElementById('date-from');
     const dateToInput = document.getElementById('date-to');
 
     if (dateFromInput) dateFromInput.value = defaultRange.start;
     if (dateToInput) dateToInput.value = defaultRange.end;
 
-    // Reset filters object
     this.currentFilters = {
       startDate: defaultRange.start,
       endDate: defaultRange.end
     };
 
-    // Clear persisted filters
     if (CONFIG.features.filterPersistence) {
       try {
         localStorage.removeItem('dashboard_filters');
@@ -296,20 +223,14 @@ class Dashboard {
       }
     }
 
-    // Re-render
     this.debouncedRender();
   }
 
-  /**
-   * Set default date range in inputs
-   */
   setDefaultDateRange() {
     const dateFromInput = document.getElementById('date-from');
     const dateToInput = document.getElementById('date-to');
-
     if (!dateFromInput || !dateToInput) return;
 
-    // Try to load persisted filters first
     let defaultRange = getDefaultDateRange();
 
     if (CONFIG.features.filterPersistence) {
@@ -318,10 +239,7 @@ class Dashboard {
         if (stored) {
           const parsed = JSON.parse(stored);
           if (parsed.startDate && parsed.endDate) {
-            defaultRange = {
-              start: parsed.startDate,
-              end: parsed.endDate
-            };
+            defaultRange = { start: parsed.startDate, end: parsed.endDate };
           }
         }
       } catch (error) {
@@ -338,35 +256,19 @@ class Dashboard {
     };
   }
 
-  /**
-   * Refresh all data
-   */
   async refreshData() {
     try {
-      // Clear existing data
       dataLoader.clear();
-
-      // Destroy all charts to free memory
       chartManager.destroyAllCharts();
-
-      // Reload all data
       await dataLoader.loadAll();
-
-      // Re-render current page
       await this.renderCurrentPage();
-
-      // Ensure sizes are correct after refresh
       chartManager.resizeAllCharts();
-
     } catch (error) {
       console.error('Failed to refresh data:', error);
       showError('Failed to refresh data. Please try again.');
     }
   }
 
-  /**
-   * Export current page data
-   */
   exportCurrentData() {
     const data = dataLoader.getData(this.currentPage, this.currentFilters);
 
@@ -381,30 +283,21 @@ class Dashboard {
     exportToCsv(data, filename);
   }
 
-  /**
-   * Setup auto-refresh functionality
-   */
   setupAutoRefresh() {
     setInterval(async () => {
-      if (document.hidden) return; // Don't refresh when tab is not visible
-
+      if (document.hidden) return;
       try {
         console.log('Auto-refreshing data...');
         await this.refreshData();
       } catch (error) {
         console.error('Auto-refresh failed:', error);
-        // Don't show error for auto-refresh failures to avoid spam
       }
     }, CONFIG.performance.dataRefreshInterval);
   }
 
-  /**
-   * Handle page visibility changes
-   */
   setupVisibilityHandling() {
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && this.isInitialized) {
-        // Page became visible, refresh charts in case they got corrupted
         setTimeout(() => {
           chartManager.resizeAllCharts();
         }, 100);
@@ -412,9 +305,6 @@ class Dashboard {
     });
   }
 
-  /**
-   * Get current dashboard state
-   */
   getState() {
     return {
       currentPage: this.currentPage,
@@ -431,15 +321,10 @@ class Dashboard {
     };
   }
 
-  /**
-   * Handle errors globally
-   */
   handleError(error, context = 'Unknown') {
     console.error(`Dashboard error in ${context}:`, error);
 
-    // Show user-friendly error message
     let message = 'An unexpected error occurred.';
-
     if (error.name === 'NetworkError' || error.message.includes('fetch')) {
       message = 'Network error. Please check your connection and try again.';
     } else if (error.message.includes('CSV') || error.message.includes('parse')) {
@@ -464,26 +349,18 @@ window.addEventListener('unhandledrejection', (event) => {
   dashboard.handleError(event.reason, 'Promise');
 });
 
-// Create dashboard instance
 const dashboard = new Dashboard();
-
-// Make dashboard available globally for debugging
 window.dashboard = dashboard;
 
-// Initialize when DOM is loaded
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    dashboard.init();
-  });
+  document.addEventListener('DOMContentLoaded', () => dashboard.init());
 } else {
   dashboard.init();
 }
 
-// Make utility functions available globally for onclick handlers
 window.exportToCsv = exportToCsv;
 window.chartManager = chartManager;
 
-// Handle initial page from URL hash
 window.addEventListener('load', () => {
   const hash = window.location.hash.slice(1);
   if (hash && CONFIG.dataSources[hash]) {
