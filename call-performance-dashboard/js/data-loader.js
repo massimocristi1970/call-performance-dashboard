@@ -178,8 +178,9 @@ class DataLoader {
       if (waitF) r.waitTime_numeric = cleanNumber(r[waitF]);
     }
 
-    return r;
-  }
+    console.log(`Processed ${sourceKey} row:`, r);
+	return r;
+	}
 
   findBestMatch(headers, candidates) {
     const norm = headers.map((h) => ({ orig: h, norm: normalizeHeader(h) }));
