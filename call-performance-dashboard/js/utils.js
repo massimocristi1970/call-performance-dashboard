@@ -153,6 +153,20 @@ export function isConnected(status) {
 export function debounce(func, wait) {
   let t; return (...args) => { clearTimeout(t); t = setTimeout(() => func(...args), wait); };
 }
+
+export function isConnectedCall(durationStr) {
+  // Duration format looks like "mm:ss" or "hh:mm:ss"
+  if (!durationStr) return false;
+  const parts = durationStr.split(':').map(Number);
+  let seconds = 0;
+  if (parts.length === 2) {
+    seconds = parts[0] * 60 + parts[1];
+  } else if (parts.length === 3) {
+    seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  return seconds > 150; // 2 minutes 30 seconds
+}
+
 export function deepClone(obj) {
   if (obj === null || typeof obj !== 'object') return obj;
   if (obj instanceof Date) return new Date(obj.getTime());

@@ -3,7 +3,9 @@ export const CONFIG = {
   dataSources: {
     inbound:  { url: "./data/inbound_calls.csv",            name: "Inbound Calls",  icon: "📥", color: "#3b82f6" },
     outbound: { url: "./data/outbound_calls.csv",           name: "Outbound Calls", icon: "📤", color: "#10b981" },
+	outbound_connectrate: { url: "./data/outbound_connectrate.csv",           name: "Outbound Connect Rate", icon: "📤", color: "#10b981" },
     fcr:      { url: "./data/first_contact_resolution.csv", name: "First Contact Resolution", icon: "✅", color: "#f59e0b" }
+	
   },
 
   fieldMappings: {
@@ -22,6 +24,13 @@ export const CONFIG = {
       duration: ["Total Call Duration"],
       count:    ["Total Calls"]
     },
+	outbound_connectrate: {
+	   date: ['Date/Time (earliest)', 'Date/Time', 'Date'],
+       direction: ['Initial Direction', 'Direction'],
+       duration: ['Duration', 'Call Duration'],
+       agent: ['Agent', 'Agent Name']
+    },
+
     fcr: {
       date:     ["Date"],   // we compose full date from Year/Month/Date in the loader
       count:    ["Count"]
