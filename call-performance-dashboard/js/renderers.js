@@ -1,4 +1,4 @@
-// js/renderers.js - Match inbound pattern exactly
+// js/renderers.js - Fix outbound + fcr chart calls
 import { CONFIG, getKPIConfig, getFieldMapping } from './config.js';
 import { formatNumber, isAbandoned, cleanNumber } from './utils.js';
 import dataLoader from './data-loader.js';
@@ -10,7 +10,6 @@ class PageRenderer {
 
   async renderPage(pageKey, containerId){
     let data = dataLoader.getData(pageKey, this.currentFilters || {});
-
     const container = document.getElementById(containerId);
     if(!container) return;
 
@@ -54,7 +53,6 @@ class PageRenderer {
     const grid = container.querySelector('.charts-grid');
 
     if (pageKey === 'fcr') {
-      // Use EXACT same pattern as inbound
       const idA = `${pageKey}-cases-over-time`;
       grid.appendChild(this.chartWrap('Cases Over Time', idA));
       chartManager.createCallsOverTimeChart(idA, data, {
@@ -66,7 +64,6 @@ class PageRenderer {
     }
 
     if (pageKey === 'outbound') {
-      // Use EXACT same pattern as inbound
       const idA = `${pageKey}-calls-over-time`;
       grid.appendChild(this.chartWrap('Outbound Calls Over Time', idA));
       chartManager.createCallsOverTimeChart(idA, data, {
@@ -80,9 +77,13 @@ class PageRenderer {
       const answered = data.reduce((s, r) => s + cleanNumber(r.AnsweredCalls_numeric), 0);
       const missed   = data.reduce((s, r) => s + cleanNumber(r.MissedCalls_numeric), 0);
       const vm       = data.reduce((s, r) => s + cleanNumber(r.VoicemailCalls_numeric), 0);
-      chartManager.createDoughnutChart(idB, data, {
-        labels: ['Answered', 'Missed', 'Voicemail'],
-        data: [answered, missed, vm]
+      chartManager.createDoughnutChart(idB, [
+        { label: 'Answered', value: answered },
+        { label: 'Missed',   value: missed },
+        { label: 'Voicemail',value: vm }
+      ], {
+        labelField: 'label',
+        valueField: 'value'
       });
 
       const idC = `${pageKey}-agent`;
@@ -99,7 +100,7 @@ class PageRenderer {
       return;
     }
 
-    // Inbound - keep exactly the same
+    // Inbound
     const idA = `${pageKey}-calls-over-time`;
     grid.appendChild(this.chartWrap('Inbound Calls Over Time', idA));
     chartManager.createCallsOverTimeChart(idA, data, {
@@ -136,12 +137,9 @@ class PageRenderer {
     }
 
     if (pageKey === 'outbound') {
-      const total    = data.reduce((s, r) =>
-        s + (Number.isFinite(r.TotalCalls_numeric) ? r.TotalCalls_numeric : cleanNumber(r['Total Calls'])), 0);
-      const answered = data.reduce((s, r) =>
-        s + (Number.isFinite(r.AnsweredCalls_numeric) ? r.AnsweredCalls_numeric : cleanNumber(r['Answered Calls'])), 0);
-      const duration = data.reduce((s, r) =>
-        s + (Number.isFinite(r.TotalCallDuration_numeric) ? r.TotalCallDuration_numeric : cleanNumber(r['Total Call Duration'])), 0);
+      const total    = data.reduce((s, r) => s + cleanNumber(r.TotalCalls_numeric), 0);
+      const answered = data.reduce((s, r) => s + cleanNumber(r.AnsweredCalls_numeric), 0);
+      const duration = data.reduce((s, r) => s + cleanNumber(r.TotalCallDuration_numeric), 0);
 
       out.totalCalls  = total;
       out.connectRate = total > 0 ? (answered / total) * 100 : 0;
@@ -149,8 +147,7 @@ class PageRenderer {
     }
 
     if (pageKey === 'fcr') {
-      const totalCases = data.reduce((s, r) =>
-        s + (Number.isFinite(r.Count_numeric) ? r.Count_numeric : cleanNumber(r['Count'])), 0);
+      const totalCases = data.reduce((s, r) => s + cleanNumber(r.Count_numeric), 0);
       out.totalCases = totalCases;
     }
 
