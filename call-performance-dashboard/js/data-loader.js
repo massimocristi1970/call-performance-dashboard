@@ -229,6 +229,9 @@ class DataLoader {
   }
 
   isValidRow(row, key) {
+	// Handle null rows (filtered out in processRow)
+	if (row === null) return false;
+  
 	// Reject rows that are entirely blank
 	if (Object.values(row).every(v => isBlank(v))) return false;
 
@@ -238,12 +241,12 @@ class DataLoader {
 	}
 
 	if (key === 'fcr') {
-	  return !isBlank(row.Year); // only require Year
-    }
+		return !isBlank(row.Year); // only require Year
+	}
 
 	if (key === 'outbound_connectrate') {
-	   // Require Call ID and that we successfully processed it (not filtered out)
-	   return !isBlank(row['Call ID']) && row !== null;
+		// Require Call ID - row won't be null here since we already filtered above
+		return !isBlank(row['Call ID']);
 	}
 
 	if (key === 'inbound') {
@@ -252,7 +255,7 @@ class DataLoader {
 	}
 
 	return true;
-	}
+   }
 
 
   filterByDateRange(key, startDate, endDate) {
