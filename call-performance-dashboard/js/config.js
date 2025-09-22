@@ -50,8 +50,9 @@ export const CONFIG = {
       { key: "avgTalkTime",   label: "Avg Talk Time",    icon: "💬", color: "#8b5cf6", format: "duration" }
     ],
     fcr: [
-      { key: "totalCases",    label: "Total Cases",      icon: "📝", color: "#3b82f6", format: "number" }
-    ]
+	  { key: "totalCases", label: "Total Cases", icon: "📋", color: "#3b82f6", format: "number" },
+	  { key: "fcrPercentage", label: "FCR Rate vs Connected Calls", icon: "📊", color: "#10b981", format: "percentage", threshold: { warning: 20, critical: 10 } }
+	]
   },
 
   colorSchemes: {
