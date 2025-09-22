@@ -251,18 +251,4 @@ export function exportToCsv(data, filename) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);
-  
-  /**
- * Convert duration string "HH:MM:SS" or "MM:SS" into total seconds
- */
-export function durationToSeconds(dur) {
-  if (!dur) return 0;
-  const parts = dur.split(':').map(Number);
-  if (parts.length === 3) {
-    return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
-  } else if (parts.length === 2) {
-    return (parts[0] * 60) + parts[1];
-  } else {
-    return Number(dur) || 0;
-  }
 }

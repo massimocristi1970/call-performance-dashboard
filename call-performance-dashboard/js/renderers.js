@@ -1,127 +1,120 @@
 // js/renderers.js
 import { dataLoader } from './data-loader.js';
 import chartManager from './chart-manager.js';
-import { durationToSeconds } from './utils.js';
+
+// Local helper (do NOT add to utils.js)
+function durationToSeconds(str) {
+  if (!str) return 0;
+  const parts = String(str).split(':').map(Number);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return Number(str) || 0;
+}
+
+// Small DOM helpers (match your existing cards/tiles pattern)
+function setTileText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
 
 class PageRenderer {
-  updateFilters(filters) {
-    this.currentFilters = filters;
+  constructor() {
+    this.currentFilters = {};
   }
 
-  // ---------- INBOUND ----------
+  updateFilters(filters) {
+    this.currentFilters = filters || {};
+  }
+
+  // ---------------- INBOUND (unchanged) ----------------
   async renderInbound(filters) {
     const data = dataLoader.getData('inbound', filters);
-    if (!data.length) return;
+    if (!data || data.length === 0) return;
 
-    chartManager.createChart('inbound-calls-over-time', data, {
-      type: 'line',
-      x: 'date_parsed',
-      y: () => 1,
-      agg: 'count',
+    // Time series: count of inbound calls per day
+    chartManager.createTimeSeriesChart('inbound-calls-over-time', data, {
+      valueField: null, // null => counts rows
       label: 'Inbound Calls'
     });
 
-    chartManager.createChart('inbound-status', data, {
-      type: 'doughnut',
-      groupBy: 'Status',
-      label: 'Inbound Status'
+    // Status doughnut
+    chartManager.createStatusChart('inbound-status', data);
+
+    // Calls per agent (inbound)
+    chartManager.createAgentChart('inbound-agent', data);
+  }
+
+  // ---------------- OUTBOUND (updated as requested) ----------------
+  async renderOutbound(filters) {
+    // Primary outbound dataset
+    const callsData = dataLoader.getData('outbound', filters) || [];
+    // Connect-rate dataset (filter to outbound direction only)
+    const connectRaw = dataLoader.getData('outbound_connectrate', filters) || [];
+    const connectData = connectRaw.filter(r => {
+      const dir = (r['Initial Direction'] || '').toString().toLowerCase();
+      return dir.includes('outbound');
     });
 
-    chartManager.createChart('inbound-agent', data, {
-      type: 'bar',
+    // ---- Tiles ----
+    // Total Outbound Calls: sum of OutboundCalls_numeric from outbound_calls.csv
+    const totalOutboundCalls = callsData.reduce(
+      (sum, r) => sum + (Number(r.OutboundCalls_numeric) || 0), 0
+    );
+
+    // Connect Rate: from outbound_connectrate.csv (duration > 150s)
+    const totalOutboundRows = connectData.length;
+    const connectedRows = connectData.reduce((acc, r) => {
+      const sec = durationToSeconds(r['Duration']);
+      return acc + (sec > 150 ? 1 : 0);
+    }, 0);
+    const connectRate = totalOutboundRows > 0
+      ? ((connectedRows / totalOutboundRows) * 100)
+      : 0;
+
+    setTileText('outbound-total-calls', totalOutboundCalls.toLocaleString());
+    setTileText('outbound-connect-rate', `${connectRate.toFixed(1)}%`);
+
+    // ---- Charts ----
+
+    // Outbound Calls Over Time (use OutboundCalls_numeric)
+    chartManager.createTimeSeriesChart('outbound-calls-over-time', callsData, {
+      valueField: 'OutboundCalls_numeric',
+      label: 'Outbound Calls'
+    });
+
+    // Calls per Agent (sum of OutboundCalls_numeric by Agent)
+    chartManager.createBarChart('outbound-agent', callsData, {
       groupBy: 'Agent',
+      valueField: 'OutboundCalls_numeric',
       label: 'Calls per Agent'
     });
+
+    // Call Outcomes (doughnut) from connectrate file: Connected vs Not Connected
+    // We pass rows array in the same structure your doughnut expects:
+    const outcomesRows = [
+      { label: 'Connected (>2:30)', value: connectedRows },
+      { label: 'Not Connected', value: Math.max(totalOutboundRows - connectedRows, 0) }
+    ];
+    chartManager.createDoughnutChart('outbound-outcomes', outcomesRows, {
+      // If your chart-manager expects rows + opts, this matches prior logs
+      labelField: 'label',
+      valueField: 'value',
+      title: 'Outbound Call Outcomes'
+    });
   }
 
-  // ---------- OUTBOUND ----------
-  async renderOutbound(filters = {}) {
-  const outboundData = dataLoader.getData('outbound', filters);
-  const connectRateData = dataLoader.getData('outbound_connectrate', filters);
-
-  const container = document.getElementById('outbound-content');
-  container.innerHTML = '';
-
-  if ((!outboundData || outboundData.length === 0) &&
-      (!connectRateData || connectRateData.length === 0)) {
-    container.appendChild(this.renderNoData());
-    return;
-  }
-
-  // ---- KPIs ----
-  const totalCalls = outboundData.reduce((sum, r) => sum + (r.OutboundCalls_numeric || 0), 0);
-
-  // filter only outbound rows
-  const outboundOnly = connectRateData.filter(r => 
-    r['Initial Direction'] && r['Initial Direction'].toLowerCase().includes('outbound')
-  );
-
-  // compute connect stats
-  let totalOutboundConnect = 0;
-  let connectedCalls = 0;
-  outboundOnly.forEach(r => {
-    const dur = parseDurationToSeconds(r['Duration']);
-    totalOutboundConnect++;
-    if (dur > 150) connectedCalls++;
-  });
-  const connectRate = totalOutboundConnect > 0 ? (connectedCalls / totalOutboundConnect) * 100 : 0;
-
-  container.appendChild(this.renderKPI('📤', totalCalls.toLocaleString(), 'Total Outbound Calls'));
-  container.appendChild(this.renderKPI('📈', connectRate.toFixed(1) + '%', 'Connect Rate'));
-
-  // ---- Charts ----
-  // Calls over time (using outbound.csv)
-  chartManager.createTimeSeriesChart({
-    id: 'outbound-calls-over-time',
-    rows: outboundData,
-    valueField: 'OutboundCalls_numeric',
-    title: 'Outbound Calls Over Time',
-    color: CONFIG.dataSources.outbound.color
-  });
-
-  // Calls per agent (using outbound.csv)
-  chartManager.createBarChart({
-    id: 'outbound-agent',
-    rows: outboundData,
-    labelField: 'Agent',
-    valueField: 'OutboundCalls_numeric',
-    title: 'Calls Per Agent',
-    color: CONFIG.dataSources.outbound.color
-  });
-
-  // Call outcomes (from connectrate.csv)
-  chartManager.createDoughnutChart({
-    id: 'outbound-outcomes',
-    rows: [
-      { label: 'Connected >2:30', value: connectedCalls },
-      { label: 'Not Connected', value: totalOutboundConnect - connectedCalls }
-    ],
-    title: 'Outbound Call Outcomes',
-    colors: ['#10b981', '#f87171']
-  });
-}
-
-
-  // ---------- FCR ----------
+  // ---------------- FCR (unchanged) ----------------
   async renderFCR(filters) {
     const data = dataLoader.getData('fcr', filters);
-    if (!data.length) return;
+    if (!data || data.length === 0) return;
 
-    chartManager.createChart('fcr-cases-over-time', data, {
-      type: 'line',
-      x: 'date_parsed',
-      y: 'Count_numeric',
-      agg: 'sum',
+    chartManager.createTimeSeriesChart('fcr-cases-over-time', data, {
+      valueField: 'Count_numeric',
       label: 'FCR Cases'
     });
   }
-
-  // ---------- Helper ----------
-  updateTile(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
-  }
 }
 
-export const pageRenderer = new PageRenderer();
+const pageRenderer = new PageRenderer();
 export default pageRenderer;
+export { pageRenderer };
