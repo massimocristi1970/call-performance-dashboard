@@ -8,7 +8,7 @@ import {
   updateProgress,
   normalizeHeader,
   parseDate,
-  cleanNumber
+  cleanNumber,
   isConnectedCall
 } from './utils.js';
 
