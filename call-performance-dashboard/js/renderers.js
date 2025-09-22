@@ -32,10 +32,7 @@ class PageRenderer {
     if (!data || data.length === 0) return;
 
     // Time series: count of inbound calls per day
-    chartManager.createTimeSeriesChart('inbound-calls-over-time', data, {
-      valueField: null, // null => counts rows
-      label: 'Inbound Calls'
-    });
+    chartManager.createCallsOverTimeChart('inbound-calls-over-time', rows, { dateField: 'date_parsed' });
 
     // Status doughnut
     chartManager.createStatusChart('inbound-status', data);
@@ -77,10 +74,8 @@ class PageRenderer {
     // ---- Charts ----
 
     // Outbound Calls Over Time (use OutboundCalls_numeric)
-    chartManager.createTimeSeriesChart('outbound-calls-over-time', callsData, {
-      valueField: 'OutboundCalls_numeric',
-      label: 'Outbound Calls'
-    });
+    chartManager.createCallsOverTimeChart('outbound-calls-over-time', rows, { dateField: 'date_parsed' });
+
 
     // Calls per Agent (sum of OutboundCalls_numeric by Agent)
     chartManager.createBarChart('outbound-agent', callsData, {
@@ -108,10 +103,8 @@ class PageRenderer {
     const data = dataLoader.getData('fcr', filters);
     if (!data || data.length === 0) return;
 
-    chartManager.createTimeSeriesChart('fcr-cases-over-time', data, {
-      valueField: 'Count_numeric',
-      label: 'FCR Cases'
-    });
+    chartManager.createCallsOverTimeChart('fcr-cases-over-time', rows, { dateField: 'date_parsed' });
+
   }
 }
 
