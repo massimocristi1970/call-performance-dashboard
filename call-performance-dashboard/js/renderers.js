@@ -53,6 +53,7 @@ class PageRenderer {
     const grid = container.querySelector('.charts-grid');
 
     if (pageKey === 'fcr') {
+      // Chart 1: Existing Cases Over Time
       const idA = `${pageKey}-cases-over-time`;
       grid.appendChild(this.chartWrap('Cases Over Time', idA));
       chartManager.createCallsOverTimeChart(idA, data, {
@@ -60,6 +61,28 @@ class PageRenderer {
         valueField: 'Count_numeric',
         color: CONFIG.dataSources[pageKey].color
       });
+
+      // Chart 2: NEW - Call Volume Comparison
+      const idB = `${pageKey}-volume-comparison`;
+      grid.appendChild(this.chartWrap('Call Volume Comparison: FCR vs Connected Calls', idB));
+  
+      // Get data from all sources with same date filters
+      const fcrData = dataLoader.getData('fcr', this.currentFilters);
+      const inboundData = dataLoader.getData('inbound', this.currentFilters);
+      const outboundConnectData = dataLoader.getData('outbound_connectrate', this.currentFilters);
+
+      // Calculate totals
+      const totalFCR = fcrData.reduce((s, r) => s + cleanNumber(r.Count_numeric), 0);
+      const totalInboundConnected = inboundData.filter(r => !isAbandoned(r.Disposition || '')).length;
+      const totalOutboundConnected = outboundConnectData.filter(r => r.isConnected).length;
+
+      chartManager.createBarChart(idB, [], {
+        labels: ['FCR Cases', 'Connected Inbound', 'Connected Outbound'],
+        data: [totalFCR, totalInboundConnected, totalOutboundConnected],
+        label: 'Call Volume',
+        multiColor: true
+      });
+  
       return;
     }
 
