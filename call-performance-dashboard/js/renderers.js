@@ -10,8 +10,14 @@ function durationToSeconds(str) {
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   return Number(str) || 0;
 }
+function secondsToMMSS(seconds) {
+  if (!seconds || isNaN(seconds)) return "0s";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
-// Small DOM helpers (match your existing cards/tiles pattern)
+// Small DOM helper
 function setTileText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
@@ -31,81 +37,99 @@ class PageRenderer {
     const data = dataLoader.getData('inbound', filters);
     if (!data || data.length === 0) return;
 
-    // Time series: count of inbound calls per day
-    chartManager.createCallsOverTimeChart('inbound-calls-over-time', data, {
-      dateField: 'date_parsed'
+    // 🔹 KPI Tiles
+    const totalInbound = data.length;
+    const avgWait =
+      data.reduce((sum, r) => sum + (r.waitTime_numeric || 0), 0) /
+      (totalInbound || 1);
+
+    setTileText("inbound-total-calls", totalInbound.toLocaleString());
+    setTileText("inbound-avg-wait", secondsToMMSS(avgWait));
+
+    // Charts
+    chartManager.createCallsOverTimeChart("inbound-calls-over-time", data, {
+      dateField: "date_parsed",
     });
-
-    // Status doughnut
-    chartManager.createStatusChart('inbound-status', data);
-
-    // Calls per agent (inbound)
-    chartManager.createAgentChart('inbound-agent', data);
+    chartManager.createStatusChart("inbound-status", data);
+    chartManager.createAgentChart("inbound-agent", data);
   }
 
   // ---------------- OUTBOUND ----------------
   async renderOutbound(filters) {
-    // Primary outbound dataset
-    const callsData = dataLoader.getData('outbound', filters) || [];
-    // Connect-rate dataset (filter to outbound direction only)
-    const connectRaw = dataLoader.getData('outbound_connectrate', filters) || [];
-    const connectData = connectRaw.filter(r => {
-      const dir = (r['Initial Direction'] || '').toString().toLowerCase();
-      return dir.includes('outbound');
+    const callsData = dataLoader.getData("outbound", filters) || [];
+    const connectRaw = dataLoader.getData("outbound_connectrate", filters) || [];
+    const connectData = connectRaw.filter((r) => {
+      const dir = (r["Initial Direction"] || "").toString().toLowerCase();
+      return dir.includes("outbound");
     });
 
-    // ---- Tiles ----
+    // 🔹 KPI Tiles
     const totalOutboundCalls = callsData.reduce(
-      (sum, r) => sum + (Number(r.OutboundCalls_numeric) || 0), 0
+      (sum, r) => sum + (Number(r.OutboundCalls_numeric) || 0),
+      0
     );
-
     const totalOutboundRows = connectData.length;
     const connectedRows = connectData.reduce((acc, r) => {
-      const sec = durationToSeconds(r['Duration']);
+      const sec = durationToSeconds(r["Duration"]);
       return acc + (sec > 150 ? 1 : 0);
     }, 0);
-    const connectRate = totalOutboundRows > 0
-      ? ((connectedRows / totalOutboundRows) * 100)
-      : 0;
+    const connectRate =
+      totalOutboundRows > 0 ? (connectedRows / totalOutboundRows) * 100 : 0;
 
-    setTileText('outbound-total-calls', totalOutboundCalls.toLocaleString());
-    setTileText('outbound-connect-rate', `${connectRate.toFixed(1)}%`);
+    setTileText("outbound-total-calls", totalOutboundCalls.toLocaleString());
+    setTileText("outbound-connect-rate", `${connectRate.toFixed(1)}%`);
 
-    // ---- Charts ----
-
-    // Outbound Calls Over Time (use OutboundCalls_numeric)
-    chartManager.createCallsOverTimeChart('outbound-calls-over-time', callsData, {
-      dateField: 'date_parsed',
-      valueField: 'OutboundCalls_numeric'
+    // Charts
+    chartManager.createCallsOverTimeChart(
+      "outbound-calls-over-time",
+      callsData,
+      { dateField: "date_parsed", valueField: "OutboundCalls_numeric" }
+    );
+    chartManager.createBarChart("outbound-agent", callsData, {
+      groupBy: "Agent",
+      valueField: "OutboundCalls_numeric",
+      label: "Calls per Agent",
     });
-
-    // Calls per Agent (sum of OutboundCalls_numeric by Agent)
-    chartManager.createBarChart('outbound-agent', callsData, {
-      groupBy: 'Agent',
-      valueField: 'OutboundCalls_numeric',
-      label: 'Calls per Agent'
-    });
-
-    // Call Outcomes (doughnut)
     const outcomesRows = [
-      { label: 'Connected (>2:30)', value: connectedRows },
-      { label: 'Not Connected', value: Math.max(totalOutboundRows - connectedRows, 0) }
+      { label: "Connected (>2:30)", value: connectedRows },
+      {
+        label: "Not Connected",
+        value: Math.max(totalOutboundRows - connectedRows, 0),
+      },
     ];
-    chartManager.createDoughnutChart('outbound-outcomes', outcomesRows, {
-      labelField: 'label',
-      valueField: 'value',
-      title: 'Outbound Call Outcomes'
+    chartManager.createDoughnutChart("outbound-outcomes", outcomesRows, {
+      labelField: "label",
+      valueField: "value",
+      title: "Outbound Call Outcomes",
     });
   }
 
   // ---------------- FCR ----------------
   async renderFCR(filters) {
-    const data = dataLoader.getData('fcr', filters);
+    const data = dataLoader.getData("fcr", filters);
     if (!data || data.length === 0) return;
 
-    chartManager.createCallsOverTimeChart('fcr-cases-over-time', data, {
-      dateField: 'date_parsed',
-      valueField: 'Count_numeric'
+    // 🔹 KPI Tiles
+    const totalCases = data.reduce(
+      (sum, r) => sum + (Number(r.Count_numeric) || 0),
+      0
+    );
+    // If no "Resolved" column is in CSV, we fallback to assuming all are resolved
+    const resolvedCases = data.reduce((sum, r) => {
+      if (r.Resolved && String(r.Resolved).toLowerCase() === "yes") {
+        return sum + (Number(r.Count_numeric) || 0);
+      }
+      return sum;
+    }, 0);
+    const fcrRate = totalCases > 0 ? (resolvedCases / totalCases) * 100 : 0;
+
+    setTileText("fcr-total-cases", totalCases.toLocaleString());
+    setTileText("fcr-rate", `${fcrRate.toFixed(1)}%`);
+
+    // Charts
+    chartManager.createCallsOverTimeChart("fcr-cases-over-time", data, {
+      dateField: "date_parsed",
+      valueField: "Count_numeric",
     });
   }
 }
