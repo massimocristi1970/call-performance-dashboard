@@ -129,7 +129,10 @@ class Dashboard {
 
     // Show/hide pages
     document.querySelectorAll('.page').forEach(pageEl => {
-      pageEl.classList.toggle('active', pageEl.id === `${page}-page`);
+      const isTarget = pageEl.id === `${page}-page`;
+      // Critical: toggle BOTH classes so .hidden (display:none !important) is removed from the target
+      pageEl.classList.toggle('active', isTarget);
+      pageEl.classList.toggle('hidden', !isTarget);
     });
 
     this.currentPage = page;
