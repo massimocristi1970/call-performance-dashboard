@@ -127,28 +127,27 @@ class DataLoader {
     if (sourceKey === 'fcr') {
       const year = cleanNumber(r.Year);
       const month = cleanNumber(r.Month);
-      const day = cleanNumber(r.Date);
+	  const day = cleanNumber(r.Date);
 
       if (year > 1900) {
         let dt;
-        if (!isNaN(month) && month >= 1 && month <= 12 && !isNaN(day) && day >= 1 && day <= 31) {
+        if (!isNaN(month) && month >= 1 && !isNaN(day) && day >= 1) {
           dt = new Date(year, month - 1, day);
         } else {
-          // fallback for "Total" or missing values — bucket to 1 Jan of the year
+          // fallback for "Total" or missing values
           dt = new Date(year, 0, 1);
         }
-        if (!isNaN(dt)) {
-          r.date_parsed = dt;
-          r.__chartDate = dt.toISOString().split('T')[0];
-        }
+        r.date_parsed = dt;
+        r.__chartDate = dt.toISOString().split('T')[0];
       }
 
       r.Count_numeric = cleanNumber(r.Count);
     }
 
+
+
     // ----- OUTBOUND -----
     if (sourceKey === 'outbound') {
-      // Date (keep existing behavior)
       if (r.Date) {
         const pd = parseDate(r.Date);
         if (pd) {
@@ -157,64 +156,11 @@ class DataLoader {
         }
       }
 
-      // Parse numeric fields (existing)
-      r.TotalCalls_numeric        = cleanNumber(r['Total Calls']);
-      r.AnsweredCalls_numeric     = cleanNumber(r['Answered Calls']);
-      r.MissedCalls_numeric       = cleanNumber(r['Missed Calls']);
-      r.VoicemailCalls_numeric    = cleanNumber(r['Voicemail Calls']);
+      r.TotalCalls_numeric     = cleanNumber(r['Total Calls']);
+      r.AnsweredCalls_numeric  = cleanNumber(r['Answered Calls']);
+      r.MissedCalls_numeric    = cleanNumber(r['Missed Calls']);
+      r.VoicemailCalls_numeric = cleanNumber(r['Voicemail Calls']);
       r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
-
-      // NEW: Outbound Calls — and redirect TotalCalls_numeric to it
-      r.OutboundCalls_numeric = cleanNumber(r['Outbound Calls']);
-      if (!isNaN(r.OutboundCalls_numeric)) {
-        // Safety switch: all existing charts/tiles that sum TotalCalls_numeric
-        // will now reflect outbound-only counts as required.
-        r.TotalCalls_numeric = r.OutboundCalls_numeric;
-      }
-    }
-
-    // ----- OUTBOUND CONNECT RATE -----
-    if (sourceKey === 'outbound_connectrate') {
-      // Resolve field names using best-match so header variations don't break us
-      const headers = Object.keys(r);
-      const dateF = this.findBestMatch(headers, map.date || ['Date/Time (earliest)', 'Date/Time', 'Date']);
-      const dirF  = this.findBestMatch(headers, map.direction || ['Initial Direction', 'Direction']);
-      const durF  = this.findBestMatch(headers, map.duration || ['Duration', 'Call Duration']);
-      const agF   = this.findBestMatch(headers, map.agent || ['Agent', 'Agent Name']);
-
-      // Date
-      if (dateF && r[dateF]) {
-        const pd = parseDate(r[dateF]);
-        if (pd) {
-          r.date_parsed = pd;
-          r.__chartDate = pd.toISOString().split('T')[0];
-        }
-      }
-
-      // Direction & Agent
-      r.InitialDirection = (dirF && r[dirF]) ? String(r[dirF]).trim().toLowerCase() : '';
-      r.Agent = agF ? r[agF] : (r.Agent || r['Agent Name'] || '');
-
-      // Duration -> seconds (supports HH:MM:SS or MM:SS)
-      let durationSeconds = 0;
-      if (durF && r[durF]) {
-        const parts = String(r[durF]).trim().split(':').map(n => parseInt(n, 10) || 0);
-        if (parts.length === 3) {
-          durationSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-        } else if (parts.length === 2) {
-          durationSeconds = parts[0] * 60 + parts[1];
-        } else {
-          // Fallback: if a numeric is present (unlikely), use it directly
-          durationSeconds = cleanNumber(r[durF]) || 0;
-        }
-      }
-      r.duration_seconds = durationSeconds;
-
-      // Connected if strictly > 02:30 (150s)
-      r.isConnected = (r.duration_seconds > 150);
-
-      // Only outbound for this dataset
-      r.isOutbound = r.InitialDirection.startsWith('out');
     }
 
     // ----- INBOUND -----
@@ -235,8 +181,8 @@ class DataLoader {
     }
 
     console.log(`Processed ${sourceKey} row:`, r);
-    return r;
-  }
+	return r;
+	}
 
   findBestMatch(headers, candidates) {
     const norm = headers.map((h) => ({ orig: h, norm: normalizeHeader(h) }));
@@ -249,32 +195,27 @@ class DataLoader {
   }
 
   isValidRow(row, key) {
-    // Reject rows that are entirely blank
-    if (Object.values(row).every(v => isBlank(v))) return false;
+	// Reject rows that are entirely blank
+	if (Object.values(row).every(v => isBlank(v))) return false;
 
-    if (key === 'outbound') {
-      // Only require Agent; TotalCalls_numeric has been redirected to OutboundCalls_numeric.
-      return !isBlank(row.Agent);
+	if (key === 'outbound') {
+		// ✅ Only require Agent
+		return !isBlank(row.Agent);
+	}
+
+	if (key === 'fcr') {
+	  return !isBlank(row.Year); // only require Year
     }
 
-    if (key === 'outbound_connectrate') {
-      // Must have a valid date and be outbound direction (Initial Direction)
-      const hasDate = row.date_parsed instanceof Date && !isNaN(row.date_parsed);
-      return hasDate && row.isOutbound === true;
-    }
 
-    if (key === 'fcr') {
-      // Only require Year (date fallback to Jan 1 handled in processRow)
-      return !isBlank(row.Year);
-    }
+	if (key === 'inbound') {
+		// Unchanged: require Call ID
+		return !isBlank(row['Call ID']);
+	}
 
-    if (key === 'inbound') {
-      // Unchanged: require Call ID
-      return !isBlank(row['Call ID']);
-    }
+	return true;
+	}
 
-    return true;
-  }
 
   filterByDateRange(key, startDate, endDate) {
     const data = this.data[key] || [];
