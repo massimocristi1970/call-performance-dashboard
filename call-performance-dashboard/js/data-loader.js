@@ -9,6 +9,7 @@ import {
   normalizeHeader,
   parseDate,
   cleanNumber
+  isConnectedCall
 } from './utils.js';
 
 function isBlank(val) {
