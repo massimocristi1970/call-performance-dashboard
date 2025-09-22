@@ -64,36 +64,47 @@ class PageRenderer {
     }
 
     if (pageKey === 'outbound') {
-      const idA = `${pageKey}-calls-over-time`;
-      grid.appendChild(this.chartWrap('Outbound Calls Over Time', idA));
-      chartManager.createCallsOverTimeChart(idA, data, {
-        dateField: '__chartDate',
-        valueField: 'TotalCalls_numeric',
-        color: CONFIG.dataSources[pageKey].color
-      });
+	   // Get data from both sources
+       const outboundCallsData = dataLoader.getData('outbound', this.currentFilters);
+       const connectRateData = dataLoader.getData('outbound_connectrate', this.currentFilters);
 
-      const idB = `${pageKey}-outcomes`;
-      grid.appendChild(this.chartWrap('Call Outcomes', idB));
-      const answered = data.reduce((s, r) => s + cleanNumber(r.AnsweredCalls_numeric), 0);
-      const missed   = data.reduce((s, r) => s + cleanNumber(r.MissedCalls_numeric), 0);
-      const vm       = data.reduce((s, r) => s + cleanNumber(r.VoicemailCalls_numeric), 0);
-      chartManager.createDoughnutChart(idB, data, {
-		labels: ['Answered', 'Missed', 'Voicemail'],
-		data: [answered, missed, vm]
-		});
+       // Chart 1: Outbound Calls Over Time (use Outbound Calls column)
+       const idA = `${pageKey}-calls-over-time`;
+       grid.appendChild(this.chartWrap('Outbound Calls Over Time', idA));
+       chartManager.createCallsOverTimeChart(idA, outboundCallsData, {
+         dateField: '__chartDate',
+         valueField: 'OutboundCalls_numeric',  // Changed to use Outbound Calls
+         color: CONFIG.dataSources[pageKey].color
+       });
 
-      const idC = `${pageKey}-agent`;
-      grid.appendChild(this.chartWrap('Calls per Agent', idC));
-      const byAgent = {};
-      data.forEach(r => {
-        const a = r.Agent || r['Agent'];
-        if (!a) return;
-        byAgent[a] = (byAgent[a] || 0) + cleanNumber(r.TotalCalls_numeric);
-      });
-      const labels = Object.keys(byAgent).sort((a, b) => byAgent[b] - byAgent[a]).slice(0, 10);
-      const vals   = labels.map(l => byAgent[l]);
-      chartManager.createBarChart(idC, data, { labels, data: vals, label: 'Total Calls', multiColor: true });
-      return;
+       // Chart 2: Call Outcomes (Connected vs Not Connected based on 2:30+ duration)
+       const idB = `${pageKey}-outcomes`;
+       grid.appendChild(this.chartWrap('Call Outcomes', idB));
+       const connected = connectRateData.filter(r => r.isConnected).length;
+       const notConnected = connectRateData.length - connected;
+       chartManager.createDoughnutChart(idB, connectRateData, {
+         labels: ['Connected (2:30+)', 'Not Connected'],
+         data: [connected, notConnected]
+       });
+
+       // Chart 3: Calls per Agent (use Outbound Calls data)
+       const idC = `${pageKey}-agent`;
+       grid.appendChild(this.chartWrap('Calls per Agent', idC));
+       const byAgent = {};
+       outboundCallsData.forEach(r => {
+         const a = r.Agent || r['Agent'];
+         if (!a) return;
+         byAgent[a] = (byAgent[a] || 0) + cleanNumber(r['Outbound Calls']); // Use Outbound Calls column
+       });
+       const labels = Object.keys(byAgent).sort((a, b) => byAgent[b] - byAgent[a]).slice(0, 10);
+       const vals = labels.map(l => byAgent[l]);
+       chartManager.createBarChart(idC, outboundCallsData, { 
+         labels, 
+         data: vals, 
+         label: 'Outbound Calls', 
+         multiColor: true 
+       });
+       return;
     }
 
     // Inbound

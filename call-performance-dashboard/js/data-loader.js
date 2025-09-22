@@ -196,6 +196,7 @@ class DataLoader {
       r.MissedCalls_numeric    = cleanNumber(r['Missed Calls']);
       r.VoicemailCalls_numeric = cleanNumber(r['Voicemail Calls']);
       r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
+	  r.OutboundCalls_numeric = cleanNumber(r['Outbound Calls']);
     }
 
     // ----- INBOUND -----
