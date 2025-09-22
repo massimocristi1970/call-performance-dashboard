@@ -133,14 +133,32 @@ class PageRenderer {
     }
 
     if (pageKey === 'outbound') {
-      const total    = data.reduce((s, r) => s + cleanNumber(r.TotalCalls_numeric), 0);
-      const answered = data.reduce((s, r) => s + cleanNumber(r.AnsweredCalls_numeric), 0);
-      const duration = data.reduce((s, r) => s + cleanNumber(r.TotalCallDuration_numeric), 0);
+	   // Get data from both sources
+	   const outboundCallsData = dataLoader.getData('outbound', this.currentFilters);
+	   const connectRateData = dataLoader.getData('outbound_connectrate', this.currentFilters);
 
-      out.totalCalls  = total;
-      out.connectRate = total > 0 ? (answered / total) * 100 : 0;
-      out.avgTalkTime = total > 0 ? (duration / total) : 0;
-    }
+	   // NEW: Use "Outbound Calls" column instead of "Total Calls"
+	   const totalOutboundCalls = outboundCallsData.reduce((s, r) => s + cleanNumber(r['Outbound Calls']), 0);
+  
+	   // NEW: Calculate connect rate using duration > 2:30 rule
+	   const totalAttempts = connectRateData.length;
+	   const connectedCalls = connectRateData.filter(r => r.isConnected).length;
+	   const actualConnectRate = totalAttempts > 0 ? (connectedCalls / totalAttempts) * 100 : 0;
+
+	   // Keep existing duration calculation for now
+	   const duration = outboundCallsData.reduce((s, r) => s + cleanNumber(r.TotalCallDuration_numeric), 0);
+
+	   out.totalCalls = totalOutboundCalls;  // Now using Outbound Calls only
+	   out.connectRate = actualConnectRate;  // Now using 2:30+ duration rule
+	   out.avgTalkTime = totalOutboundCalls > 0 ? (duration / totalOutboundCalls) : 0;
+
+	   console.log('Outbound KPIs:', {
+		 totalOutboundCalls,
+		 totalAttempts,
+		 connectedCalls,
+		 actualConnectRate: actualConnectRate.toFixed(1) + '%'
+	   });
+	   }
 
     if (pageKey === 'fcr') {
       const totalCases = data.reduce((s, r) => s + cleanNumber(r.Count_numeric), 0);
