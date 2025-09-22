@@ -77,14 +77,10 @@ class PageRenderer {
       const answered = data.reduce((s, r) => s + cleanNumber(r.AnsweredCalls_numeric), 0);
       const missed   = data.reduce((s, r) => s + cleanNumber(r.MissedCalls_numeric), 0);
       const vm       = data.reduce((s, r) => s + cleanNumber(r.VoicemailCalls_numeric), 0);
-      chartManager.createDoughnutChart(idB, [
-        { label: 'Answered', value: answered },
-        { label: 'Missed',   value: missed },
-        { label: 'Voicemail',value: vm }
-      ], {
-        labelField: 'label',
-        valueField: 'value'
-      });
+      chartManager.createDoughnutChart(idB, data, {
+		labels: ['Answered', 'Missed', 'Voicemail'],
+		data: [answered, missed, vm]
+		});
 
       const idC = `${pageKey}-agent`;
       grid.appendChild(this.chartWrap('Calls per Agent', idC));
