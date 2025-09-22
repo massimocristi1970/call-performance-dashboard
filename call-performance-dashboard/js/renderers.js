@@ -26,13 +26,15 @@ class PageRenderer {
     this.currentFilters = filters || {};
   }
 
-  // ---------------- INBOUND (unchanged) ----------------
+  // ---------------- INBOUND ----------------
   async renderInbound(filters) {
     const data = dataLoader.getData('inbound', filters);
     if (!data || data.length === 0) return;
 
     // Time series: count of inbound calls per day
-    chartManager.createCallsOverTimeChart('inbound-calls-over-time', rows, { dateField: 'date_parsed' });
+    chartManager.createCallsOverTimeChart('inbound-calls-over-time', data, {
+      dateField: 'date_parsed'
+    });
 
     // Status doughnut
     chartManager.createStatusChart('inbound-status', data);
@@ -41,7 +43,7 @@ class PageRenderer {
     chartManager.createAgentChart('inbound-agent', data);
   }
 
-  // ---------------- OUTBOUND (updated as requested) ----------------
+  // ---------------- OUTBOUND ----------------
   async renderOutbound(filters) {
     // Primary outbound dataset
     const callsData = dataLoader.getData('outbound', filters) || [];
@@ -53,12 +55,10 @@ class PageRenderer {
     });
 
     // ---- Tiles ----
-    // Total Outbound Calls: sum of OutboundCalls_numeric from outbound_calls.csv
     const totalOutboundCalls = callsData.reduce(
       (sum, r) => sum + (Number(r.OutboundCalls_numeric) || 0), 0
     );
 
-    // Connect Rate: from outbound_connectrate.csv (duration > 150s)
     const totalOutboundRows = connectData.length;
     const connectedRows = connectData.reduce((acc, r) => {
       const sec = durationToSeconds(r['Duration']);
@@ -74,8 +74,10 @@ class PageRenderer {
     // ---- Charts ----
 
     // Outbound Calls Over Time (use OutboundCalls_numeric)
-    chartManager.createCallsOverTimeChart('outbound-calls-over-time', rows, { dateField: 'date_parsed' });
-
+    chartManager.createCallsOverTimeChart('outbound-calls-over-time', callsData, {
+      dateField: 'date_parsed',
+      valueField: 'OutboundCalls_numeric'
+    });
 
     // Calls per Agent (sum of OutboundCalls_numeric by Agent)
     chartManager.createBarChart('outbound-agent', callsData, {
@@ -84,27 +86,27 @@ class PageRenderer {
       label: 'Calls per Agent'
     });
 
-    // Call Outcomes (doughnut) from connectrate file: Connected vs Not Connected
-    // We pass rows array in the same structure your doughnut expects:
+    // Call Outcomes (doughnut)
     const outcomesRows = [
       { label: 'Connected (>2:30)', value: connectedRows },
       { label: 'Not Connected', value: Math.max(totalOutboundRows - connectedRows, 0) }
     ];
     chartManager.createDoughnutChart('outbound-outcomes', outcomesRows, {
-      // If your chart-manager expects rows + opts, this matches prior logs
       labelField: 'label',
       valueField: 'value',
       title: 'Outbound Call Outcomes'
     });
   }
 
-  // ---------------- FCR (unchanged) ----------------
+  // ---------------- FCR ----------------
   async renderFCR(filters) {
     const data = dataLoader.getData('fcr', filters);
     if (!data || data.length === 0) return;
 
-    chartManager.createCallsOverTimeChart('fcr-cases-over-time', rows, { dateField: 'date_parsed' });
-
+    chartManager.createCallsOverTimeChart('fcr-cases-over-time', data, {
+      dateField: 'date_parsed',
+      valueField: 'Count_numeric'
+    });
   }
 }
 
