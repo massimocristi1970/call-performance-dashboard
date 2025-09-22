@@ -144,7 +144,41 @@ class DataLoader {
       r.Count_numeric = cleanNumber(r.Count);
     }
 
+	// ----- OUTBOUND_CONNECTRATE -----
+	if (sourceKey === 'outbound_connectrate') {
+	// Only process outbound calls - skip others
+	const direction = r['Initial Direction'] || r['Direction'];
+	if (!direction || direction.toLowerCase() !== 'outbound') {
+		return null; // This will be filtered out in processData
+	}
 
+	// Parse date from Date/Time (earliest)
+	const dateField = this.findBestMatch(Object.keys(r), map.date || ['Date/Time (earliest)', 'Date/Time', 'Date']);
+	if (dateField && r[dateField]) {
+		const pd = parseDate(r[dateField]);
+		if (pd) {
+		r.date_parsed = pd;
+		r.__chartDate = pd.toISOString().split('T')[0];
+		}
+	}
+
+	// Check if call was connected (duration > 2:30)
+	const durationField = this.findBestMatch(Object.keys(r), map.duration || ['Duration', 'Call Duration']);
+	if (durationField && r[durationField]) {
+		r.isConnected = isConnectedCall(r[durationField]);
+		r.duration_numeric = cleanNumber(r[durationField]); // For potential future use
+	} else {
+		r.isConnected = false;
+	}
+
+	console.log(`Processed outbound_connectrate row:`, {
+		callId: r['Call ID'],
+		date: r.__chartDate,
+		direction: direction,
+		duration: r[durationField],
+		isConnected: r.isConnected
+	});
+	}
 
     // ----- OUTBOUND -----
     if (sourceKey === 'outbound') {
@@ -207,6 +241,10 @@ class DataLoader {
 	  return !isBlank(row.Year); // only require Year
     }
 
+	if (key === 'outbound_connectrate') {
+	   // Require Call ID and that we successfully processed it (not filtered out)
+	   return !isBlank(row['Call ID']) && row !== null;
+	}
 
 	if (key === 'inbound') {
 		// Unchanged: require Call ID
