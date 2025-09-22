@@ -197,6 +197,29 @@ class PageRenderer {
     if (pageKey === 'fcr') {
       const totalCases = data.reduce((s, r) => s + cleanNumber(r.Count_numeric), 0);
       out.totalCases = totalCases;
+
+      // NEW: Calculate FCR percentage vs connected calls
+      try {
+        const inboundData = dataLoader.getData('inbound', this.currentFilters);
+        const outboundConnectData = dataLoader.getData('outbound_connectrate', this.currentFilters);
+
+        const totalInboundConnected = inboundData.filter(r => !isAbandoned(r.Disposition || '')).length;
+        const totalOutboundConnected = outboundConnectData.filter(r => r.isConnected).length;
+        const totalConnectedCalls = totalInboundConnected + totalOutboundConnected;
+
+        out.fcrPercentage = totalConnectedCalls > 0 ? (totalCases / totalConnectedCalls) * 100 : 0;
+
+        console.log('FCR KPIs:', {
+          totalCases,
+          totalInboundConnected,
+          totalOutboundConnected,
+          totalConnectedCalls,
+          fcrPercentage: out.fcrPercentage.toFixed(1) + '%'
+        });
+      } catch (error) {
+        console.warn('Error calculating FCR percentage:', error);
+        out.fcrPercentage = 0;
+      }
     }
 
     return out;
