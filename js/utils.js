@@ -229,7 +229,7 @@ export function validateDateRange(startDate, endDate) {
 }
 export function getDefaultDateRange() {
   const end = new Date();
-  const start = new Date(); start.setDate(start.getDate() - CONFIG.validation.dateRange.defaultDays);
+  const start = new Date('2024-01-01'); // Fixed start date
   return { start: formatDate(start, 'input'), end: formatDate(end, 'input') };
 }
 
