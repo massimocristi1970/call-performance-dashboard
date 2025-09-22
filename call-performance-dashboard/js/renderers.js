@@ -1,70 +1,180 @@
-// js/renderers.js
-import { dataLoader } from './data-loader.js';
+// js/renderers.js - Match inbound pattern exactly
+import { CONFIG, getKPIConfig, getFieldMapping } from './config.js';
+import { formatNumber, isAbandoned, cleanNumber } from './utils.js';
+import dataLoader from './data-loader.js';
 import chartManager from './chart-manager.js';
 
 class PageRenderer {
-  constructor() {
-    this.currentFilters = {};
-  }
+  constructor(){ this.currentFilters = {}; }
+  updateFilters(filters) { this.currentFilters = { ...filters }; }
 
-  updateFilters(filters) {
-    this.currentFilters = filters || {};
-  }
+  async renderPage(pageKey, containerId){
+    let data = dataLoader.getData(pageKey, this.currentFilters || {});
 
-  // ---------------- INBOUND ----------------
-  async renderInbound(filters) {
-    const data = dataLoader.getData('inbound', filters);
-    if (!data || data.length === 0) return;
+    const container = document.getElementById(containerId);
+    if(!container) return;
 
-    // Inbound Calls Over Time
-    chartManager.createCallsOverTimeChart('inbound-calls-over-time', data, {
-      dateField: 'date_parsed'
+    if(!data || data.length===0){
+      container.innerHTML = document.getElementById('no-data-template').innerHTML;
+      return;
+    }
+
+    container.innerHTML = `<div class="kpis-grid"></div><div class="charts-grid"></div>`;
+
+    // KPIs
+    const kpiGrid = container.querySelector('.kpis-grid');
+    const defs = getKPIConfig(pageKey);
+    const kpis = this.calculateKPIs(pageKey, data);
+
+    defs.forEach(def => {
+      if(!(def.key in kpis)) return;
+      const tpl = document.getElementById('kpi-template');
+      const node = tpl.content.cloneNode(true);
+      const card = node.querySelector('.kpi-card');
+
+      const icon = card.querySelector('.kpi-icon');
+      icon.textContent = def.icon;
+      icon.style.background = `${def.color}20`;
+      icon.style.color = def.color;
+
+      const valueEl = card.querySelector('.kpi-value');
+      const val = kpis[def.key];
+      valueEl.textContent = formatNumber(val, def.format);
+      if(def.threshold){
+        const { warning, critical } = def.threshold;
+        if(val >= critical) valueEl.style.color = 'var(--error-color)';
+        else if(val >= warning) valueEl.style.color = 'var(--warning-color)';
+      }
+
+      card.querySelector('.kpi-label').textContent = def.label;
+      kpiGrid.appendChild(node);
     });
 
-    // Status doughnut
-    chartManager.createStatusChart('inbound-status', data);
+    // Charts
+    const grid = container.querySelector('.charts-grid');
 
-    // Calls per agent
-    chartManager.createAgentChart('inbound-agent', data);
+    if (pageKey === 'fcr') {
+      // Use EXACT same pattern as inbound
+      const idA = `${pageKey}-cases-over-time`;
+      grid.appendChild(this.chartWrap('Cases Over Time', idA));
+      chartManager.createCallsOverTimeChart(idA, data, {
+        dateField: '__chartDate',
+        valueField: 'Count_numeric',
+        color: CONFIG.dataSources[pageKey].color
+      });
+      return;
+    }
+
+    if (pageKey === 'outbound') {
+      // Use EXACT same pattern as inbound
+      const idA = `${pageKey}-calls-over-time`;
+      grid.appendChild(this.chartWrap('Outbound Calls Over Time', idA));
+      chartManager.createCallsOverTimeChart(idA, data, {
+        dateField: '__chartDate',
+        valueField: 'TotalCalls_numeric',
+        color: CONFIG.dataSources[pageKey].color
+      });
+
+      const idB = `${pageKey}-outcomes`;
+      grid.appendChild(this.chartWrap('Call Outcomes', idB));
+      const answered = data.reduce((s, r) => s + cleanNumber(r.AnsweredCalls_numeric), 0);
+      const missed   = data.reduce((s, r) => s + cleanNumber(r.MissedCalls_numeric), 0);
+      const vm       = data.reduce((s, r) => s + cleanNumber(r.VoicemailCalls_numeric), 0);
+      chartManager.createDoughnutChart(idB, data, {
+        labels: ['Answered', 'Missed', 'Voicemail'],
+        data: [answered, missed, vm]
+      });
+
+      const idC = `${pageKey}-agent`;
+      grid.appendChild(this.chartWrap('Calls per Agent', idC));
+      const byAgent = {};
+      data.forEach(r => {
+        const a = r.Agent || r['Agent'];
+        if (!a) return;
+        byAgent[a] = (byAgent[a] || 0) + cleanNumber(r.TotalCalls_numeric);
+      });
+      const labels = Object.keys(byAgent).sort((a, b) => byAgent[b] - byAgent[a]).slice(0, 10);
+      const vals   = labels.map(l => byAgent[l]);
+      chartManager.createBarChart(idC, data, { labels, data: vals, label: 'Total Calls', multiColor: true });
+      return;
+    }
+
+    // Inbound - keep exactly the same
+    const idA = `${pageKey}-calls-over-time`;
+    grid.appendChild(this.chartWrap('Inbound Calls Over Time', idA));
+    chartManager.createCallsOverTimeChart(idA, data, {
+      dateField: '__chartDate',
+      color: CONFIG.dataSources[pageKey].color
+    });
+
+    const idB = `${pageKey}-status`;
+    grid.appendChild(this.chartWrap('Status Distribution', idB));
+    chartManager.createStatusChart(idB, data, getFieldMapping(pageKey,'status')[0] || 'Disposition');
+
+    const idC = `${pageKey}-agent`;
+    grid.appendChild(this.chartWrap('Top Agents', idC));
+    chartManager.createAgentChart(idC, data, getFieldMapping(pageKey,'agent')[0] || 'Agent Name');
   }
 
-  // ---------------- OUTBOUND ----------------
-  async renderOutbound(filters) {
-    const data = dataLoader.getData('outbound', filters);
-    if (!data || data.length === 0) return;
+  calculateKPIs(pageKey, data) {
+    const out = {};
 
-    // Outbound Calls Over Time
-    chartManager.createCallsOverTimeChart('outbound-calls-over-time', data, {
-      dateField: 'date_parsed'
-    });
+    if (pageKey === 'inbound') {
+      const total = data.length;
+      const abandoned = data.filter(r => isAbandoned(r.Disposition || '')).length;
 
-    // Outcomes doughnut
-    chartManager.createDoughnutChart('outbound-outcomes', data, {
-      labelField: 'Outcome',
-      valueField: 'TotalCalls_numeric',
-      title: 'Outbound Call Outcomes'
-    });
+      out.totalCalls  = total;
+      out.abandonRate = total > 0 ? (abandoned / total) * 100 : 0;
 
-    // Calls per agent
-    chartManager.createBarChart('outbound-agent', data, {
-      groupBy: 'Agent',
-      valueField: 'TotalCalls_numeric',
-      label: 'Calls per Agent'
-    });
+      const avgHandleFromNumeric = this.avg(data, 'duration_numeric');
+      const avgHandleFromRaw     = this.avg(data, 'Talk Time');
+      out.avgHandleTime = avgHandleFromNumeric || avgHandleFromRaw || 0;
+
+      const avgWaitFromNumeric = this.avg(data, 'waitTime_numeric');
+      const avgWaitFromRaw     = this.avg(data, 'Wait Time');
+      out.avgWaitTime = avgWaitFromNumeric || avgWaitFromRaw || 0;
+    }
+
+    if (pageKey === 'outbound') {
+      const total    = data.reduce((s, r) =>
+        s + (Number.isFinite(r.TotalCalls_numeric) ? r.TotalCalls_numeric : cleanNumber(r['Total Calls'])), 0);
+      const answered = data.reduce((s, r) =>
+        s + (Number.isFinite(r.AnsweredCalls_numeric) ? r.AnsweredCalls_numeric : cleanNumber(r['Answered Calls'])), 0);
+      const duration = data.reduce((s, r) =>
+        s + (Number.isFinite(r.TotalCallDuration_numeric) ? r.TotalCallDuration_numeric : cleanNumber(r['Total Call Duration'])), 0);
+
+      out.totalCalls  = total;
+      out.connectRate = total > 0 ? (answered / total) * 100 : 0;
+      out.avgTalkTime = total > 0 ? (duration / total) : 0;
+    }
+
+    if (pageKey === 'fcr') {
+      const totalCases = data.reduce((s, r) =>
+        s + (Number.isFinite(r.Count_numeric) ? r.Count_numeric : cleanNumber(r['Count'])), 0);
+      out.totalCases = totalCases;
+    }
+
+    return out;
   }
 
-  // ---------------- FCR ----------------
-  async renderFCR(filters) {
-    const data = dataLoader.getData('fcr', filters);
-    if (!data || data.length === 0) return;
-
-    // FCR cases over time
-    chartManager.createCallsOverTimeChart('fcr-cases-over-time', data, {
-      dateField: 'date_parsed'
-    });
+  avg(data, field){
+    const nums = data.map(r => cleanNumber(r[field])).filter(n => n >= 0);
+    if(nums.length === 0) return 0;
+    return nums.reduce((a,b)=>a+b,0)/nums.length;
   }
+
+  chartWrap(title, id){
+    const t = document.getElementById('chart-template');
+    const node = t.content.cloneNode(true);
+    node.querySelector('.chart-title').textContent = title;
+    node.querySelector('canvas').id = id;
+    return node;
+  }
+
+  async renderInbound(){ return this.renderPage('inbound','inbound-content'); }
+  async renderOutbound(){ return this.renderPage('outbound','outbound-content'); }
+  async renderFCR(){ return this.renderPage('fcr','fcr-content'); }
 }
 
-const pageRenderer = new PageRenderer();
+export const pageRenderer = new PageRenderer();
 export default pageRenderer;
-export { pageRenderer };
