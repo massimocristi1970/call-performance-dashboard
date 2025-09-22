@@ -2,7 +2,7 @@
 import { dataLoader } from './data-loader.js';
 import chartManager from './chart-manager.js';
 
-// Local helper (do NOT add to utils.js)
+// Helper: duration string -> seconds
 function durationToSeconds(str) {
   if (!str) return 0;
   const parts = String(str).split(':').map(Number);
@@ -10,17 +10,43 @@ function durationToSeconds(str) {
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   return Number(str) || 0;
 }
-function secondsToMMSS(seconds) {
-  if (!seconds || isNaN(seconds)) return "0s";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+
+// Helper: insert chart container
+function ensureChartCanvas(containerId, chartId, title) {
+  const container = document.getElementById(containerId);
+  if (!container) return null;
+
+  let wrapper = container.querySelector(`#${chartId}-wrapper`);
+  if (!wrapper) {
+    wrapper = document.createElement('div');
+    wrapper.id = `${chartId}-wrapper`;
+    wrapper.className = 'chart-wrapper';
+    wrapper.innerHTML = `
+      <h3>${title}</h3>
+      <canvas id="${chartId}"></canvas>
+    `;
+    container.appendChild(wrapper);
+  }
+  return wrapper.querySelector('canvas');
 }
 
-// Small DOM helper
-function setTileText(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = value;
+// Small helper to set text
+function setTileText(containerId, label, value) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let tile = container.querySelector(`[data-label="${label}"]`);
+  if (!tile) {
+    tile = document.createElement('div');
+    tile.className = 'kpi-card';
+    tile.dataset.label = label;
+    tile.innerHTML = `
+      <div class="kpi-label">${label}</div>
+      <div class="kpi-value">${value}</div>
+    `;
+    container.appendChild(tile);
+  } else {
+    tile.querySelector('.kpi-value').textContent = value;
+  }
 }
 
 class PageRenderer {
@@ -37,100 +63,76 @@ class PageRenderer {
     const data = dataLoader.getData('inbound', filters);
     if (!data || data.length === 0) return;
 
-    // 🔹 KPI Tiles
-    const totalInbound = data.length;
-    const avgWait =
-      data.reduce((sum, r) => sum + (r.waitTime_numeric || 0), 0) /
-      (totalInbound || 1);
-
-    setTileText("inbound-total-calls", totalInbound.toLocaleString());
-    setTileText("inbound-avg-wait", secondsToMMSS(avgWait));
+    // Tiles
+    setTileText('inbound-tiles', 'Total Calls', data.length.toLocaleString());
 
     // Charts
-    chartManager.createCallsOverTimeChart("inbound-calls-over-time", data, {
-      dateField: "date_parsed",
-    });
-    chartManager.createStatusChart("inbound-status", data);
-    chartManager.createAgentChart("inbound-agent", data);
+    ensureChartCanvas('inbound-charts', 'inbound-calls-over-time', 'Inbound Calls Over Time');
+    chartManager.createCallsOverTimeChart('inbound-calls-over-time', data, { dateField: 'date_parsed' });
+
+    ensureChartCanvas('inbound-charts', 'inbound-status', 'Inbound Status');
+    chartManager.createStatusChart('inbound-status', data);
+
+    ensureChartCanvas('inbound-charts', 'inbound-agent', 'Calls per Agent');
+    chartManager.createAgentChart('inbound-agent', data);
   }
 
   // ---------------- OUTBOUND ----------------
   async renderOutbound(filters) {
-    const callsData = dataLoader.getData("outbound", filters) || [];
-    const connectRaw = dataLoader.getData("outbound_connectrate", filters) || [];
-    const connectData = connectRaw.filter((r) => {
-      const dir = (r["Initial Direction"] || "").toString().toLowerCase();
-      return dir.includes("outbound");
-    });
+    const callsData = dataLoader.getData('outbound', filters) || [];
+    const connectRaw = dataLoader.getData('outbound_connectrate', filters) || [];
 
-    // 🔹 KPI Tiles
-    const totalOutboundCalls = callsData.reduce(
-      (sum, r) => sum + (Number(r.OutboundCalls_numeric) || 0),
-      0
+    const connectData = connectRaw.filter(r =>
+      (r['Initial Direction'] || '').toLowerCase().includes('outbound')
     );
+
+    // --- Tiles ---
+    const totalOutboundCalls = callsData.reduce(
+      (sum, r) => sum + (Number(r.OutboundCalls_numeric) || 0), 0
+    );
+
     const totalOutboundRows = connectData.length;
     const connectedRows = connectData.reduce((acc, r) => {
-      const sec = durationToSeconds(r["Duration"]);
+      const sec = durationToSeconds(r['Duration']);
       return acc + (sec > 150 ? 1 : 0);
     }, 0);
-    const connectRate =
-      totalOutboundRows > 0 ? (connectedRows / totalOutboundRows) * 100 : 0;
+    const connectRate = totalOutboundRows > 0 ? (connectedRows / totalOutboundRows) * 100 : 0;
 
-    setTileText("outbound-total-calls", totalOutboundCalls.toLocaleString());
-    setTileText("outbound-connect-rate", `${connectRate.toFixed(1)}%`);
+    setTileText('outbound-tiles', 'Total Calls', totalOutboundCalls.toLocaleString());
+    setTileText('outbound-tiles', 'Connect Rate', `${connectRate.toFixed(1)}%`);
 
-    // Charts
-    chartManager.createCallsOverTimeChart(
-      "outbound-calls-over-time",
-      callsData,
-      { dateField: "date_parsed", valueField: "OutboundCalls_numeric" }
-    );
-    chartManager.createBarChart("outbound-agent", callsData, {
-      groupBy: "Agent",
-      valueField: "OutboundCalls_numeric",
-      label: "Calls per Agent",
+    // --- Charts ---
+    ensureChartCanvas('outbound-charts', 'outbound-calls-over-time', 'Outbound Calls Over Time');
+    chartManager.createCallsOverTimeChart('outbound-calls-over-time', callsData, { dateField: 'date_parsed' });
+
+    ensureChartCanvas('outbound-charts', 'outbound-agent', 'Calls per Agent');
+    chartManager.createBarChart('outbound-agent', callsData, {
+      groupBy: 'Agent',
+      valueField: 'OutboundCalls_numeric',
+      label: 'Calls per Agent'
     });
+
+    ensureChartCanvas('outbound-charts', 'outbound-outcomes', 'Outbound Call Outcomes');
     const outcomesRows = [
-      { label: "Connected (>2:30)", value: connectedRows },
-      {
-        label: "Not Connected",
-        value: Math.max(totalOutboundRows - connectedRows, 0),
-      },
+      { label: 'Connected (>2:30)', value: connectedRows },
+      { label: 'Not Connected', value: Math.max(totalOutboundRows - connectedRows, 0) }
     ];
-    chartManager.createDoughnutChart("outbound-outcomes", outcomesRows, {
-      labelField: "label",
-      valueField: "value",
-      title: "Outbound Call Outcomes",
+    chartManager.createDoughnutChart('outbound-outcomes', outcomesRows, {
+      labelField: 'label',
+      valueField: 'value',
+      title: 'Outbound Call Outcomes'
     });
   }
 
   // ---------------- FCR ----------------
   async renderFCR(filters) {
-    const data = dataLoader.getData("fcr", filters);
+    const data = dataLoader.getData('fcr', filters);
     if (!data || data.length === 0) return;
 
-    // 🔹 KPI Tiles
-    const totalCases = data.reduce(
-      (sum, r) => sum + (Number(r.Count_numeric) || 0),
-      0
-    );
-    // If no "Resolved" column is in CSV, we fallback to assuming all are resolved
-    const resolvedCases = data.reduce((sum, r) => {
-      if (r.Resolved && String(r.Resolved).toLowerCase() === "yes") {
-        return sum + (Number(r.Count_numeric) || 0);
-      }
-      return sum;
-    }, 0);
-    const fcrRate = totalCases > 0 ? (resolvedCases / totalCases) * 100 : 0;
+    setTileText('fcr-tiles', 'Total Cases', data.length.toLocaleString());
 
-    setTileText("fcr-total-cases", totalCases.toLocaleString());
-    setTileText("fcr-rate", `${fcrRate.toFixed(1)}%`);
-
-    // Charts
-    chartManager.createCallsOverTimeChart("fcr-cases-over-time", data, {
-      dateField: "date_parsed",
-      valueField: "Count_numeric",
-    });
+    ensureChartCanvas('fcr-charts', 'fcr-cases-over-time', 'FCR Cases Over Time');
+    chartManager.createCallsOverTimeChart('fcr-cases-over-time', data, { dateField: 'date_parsed' });
   }
 }
 
