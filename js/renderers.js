@@ -165,7 +165,7 @@ class PageRenderer {
     const outboundAgentLabels = outboundAgentAvgData.map(item => item.agent);
     const outboundAgentValues = outboundAgentAvgData.map(item => Math.round(item.avgCallsPerHour * 100) / 100);
 
-    chartManager.createBarChart(idD, outboundCallsData, {
+    chartManager.createBarChart(idE, outboundCallsData, {
       labels: outboundAgentLabels,
       data: outboundAgentValues,
       label: 'Avg Calls/Hour',
