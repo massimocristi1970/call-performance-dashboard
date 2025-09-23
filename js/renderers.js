@@ -129,6 +129,48 @@ class PageRenderer {
        });
        return;
     }
+	
+	// Add this after the existing outbound charts (after idC agent chart)
+    const idD = `${pageKey}-calls-per-hour-agent`;
+    grid.appendChild(this.chartWrap('Average Outbound Calls Per Hour by Agent', idD));
+
+    // Calculate outbound calls per hour by agent using outbound_calls data
+    const outboundCallsPerHourByAgent = {};
+    outboundCallsData.forEach(r => {
+      const agent = r.Agent || r['Agent'] || 'Unknown';
+      if (!outboundCallsPerHourByAgent[agent]) {
+        outboundCallsPerHourByAgent[agent] = { calls: 0, days: new Set() };
+      }
+  
+      // Use Outbound Calls column
+      const dailyCalls = cleanNumber(r['Outbound Calls']);
+      outboundCallsPerHourByAgent[agent].calls += dailyCalls;
+  
+      // Track unique days
+      if (r.__chartDate) {
+        outboundCallsPerHourByAgent[agent].days.add(r.__chartDate);
+      }
+    });
+
+    // Calculate average calls per hour (assuming 8 hour work day)
+    const outboundAgentAvgData = Object.entries(outboundCallsPerHourByAgent)
+      .map(([agent, data]) => ({
+        agent,
+        avgCallsPerHour: data.days.size > 0 ? data.calls / (data.days.size * 8) : 0 // 8 hours per day
+      }))
+      .filter(item => item.agent !== 'Unknown' && item.avgCallsPerHour > 0)
+      .sort((a, b) => b.avgCallsPerHour - a.avgCallsPerHour)
+      .slice(0, 10);
+
+    const outboundAgentLabels = outboundAgentAvgData.map(item => item.agent);
+    const outboundAgentValues = outboundAgentAvgData.map(item => Math.round(item.avgCallsPerHour * 100) / 100);
+
+    chartManager.createBarChart(idD, outboundCallsData, {
+      labels: outboundAgentLabels,
+      data: outboundAgentValues,
+      label: 'Avg Calls/Hour',
+      multiColor: true
+    });
 
     // Inbound
     const idA = `${pageKey}-calls-over-time`;
@@ -146,6 +188,47 @@ class PageRenderer {
     grid.appendChild(this.chartWrap('Top Agents', idC));
     chartManager.createAgentChart(idC, data, getFieldMapping(pageKey,'agent')[0] || 'Agent Name');
   }
+  
+	// Add this after the existing inbound charts (after idC agent chart)
+	const idD = `${pageKey}-calls-per-hour-agent`;
+	grid.appendChild(this.chartWrap('Average Calls Per Hour by Agent', idD));
+
+	// Calculate calls per hour by agent
+	const callsPerHourByAgent = {};
+	data.forEach(r => {
+	  const agent = r['Agent Name'] || 'Unknown';
+	  if (!callsPerHourByAgent[agent]) {
+      callsPerHourByAgent[agent] = { calls: 0, hours: new Set() };
+      }
+      callsPerHourByAgent[agent].calls += 1;
+  
+      // Extract hour from date
+      if (r.date_parsed) {
+        const hour = r.date_parsed.getHours();
+        const dateHour = `${r.__chartDate}-${hour}`;
+        callsPerHourByAgent[agent].hours.add(dateHour);
+      }
+    });
+
+    // Calculate average calls per hour and prepare chart data
+    const agentAvgData = Object.entries(callsPerHourByAgent)
+      .map(([agent, data]) => ({
+        agent,
+        avgCallsPerHour: data.hours.size > 0 ? data.calls / data.hours.size : 0
+      }))
+      .filter(item => item.agent !== 'Unknown' && item.avgCallsPerHour > 0)
+      .sort((a, b) => b.avgCallsPerHour - a.avgCallsPerHour)
+      .slice(0, 10);
+
+    const agentLabels = agentAvgData.map(item => item.agent);
+    const agentValues = agentAvgData.map(item => Math.round(item.avgCallsPerHour * 100) / 100);
+
+    chartManager.createBarChart(idD, data, {
+      labels: agentLabels,
+      data: agentValues,
+      label: 'Avg Calls/Hour',
+      multiColor: true
+    });
 
   calculateKPIs(pageKey, data) {
     const out = {};
