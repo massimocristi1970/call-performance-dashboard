@@ -53,68 +53,91 @@ class Dashboard {
   }
 
   setupEventListeners() {
-    document.querySelectorAll('.nav-link').forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const page = link.dataset.page;
-        if (page) {
-          this.navigateToPage(page);
-        }
-      });
-    });
-
-    const applyFiltersBtn = document.getElementById('apply-filters');
-    const resetFiltersBtn = document.getElementById('reset-filters');
-
-    if (applyFiltersBtn) {
-      applyFiltersBtn.addEventListener('click', () => this.applyFilters());
-    }
-    if (resetFiltersBtn) {
-      resetFiltersBtn.addEventListener('click', () => this.resetFilters());
-    }
-
-    const dateFromInput = document.getElementById('date-from');
-    const dateToInput = document.getElementById('date-to');
-
-    if (dateFromInput && dateToInput) {
-      const debouncedFilterUpdate = debounce(() => this.applyFilters(), 1000);
-      dateFromInput.addEventListener('change', debouncedFilterUpdate);
-      dateToInput.addEventListener('change', debouncedFilterUpdate);
-    }
-
-    const refreshBtn = document.getElementById('refresh-btn');
-    if (refreshBtn) refreshBtn.addEventListener('click', () => this.refreshData());
-
-    const exportBtn = document.getElementById('export-btn');
-    if (exportBtn) exportBtn.addEventListener('click', () => this.exportCurrentData());
-
-    const errorCloseBtn = document.getElementById('error-close');
-    if (errorCloseBtn) errorCloseBtn.addEventListener('click', hideError);
-
-    window.addEventListener('popstate', (e) => {
-      const page = e.state?.page || 'inbound';
-      this.navigateToPage(page, false);
-    });
-
-    let resizeTimeout;
-    window.addEventListener('resize', () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        chartManager.resizeAllCharts();
-      }, 250);
-    });
-
-    document.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
-        e.preventDefault();
-        this.refreshData();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-        e.preventDefault();
-        this.exportCurrentData();
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const page = link.dataset.page;
+      if (page) {
+        this.navigateToPage(page);
       }
     });
+  });
+
+  const applyFiltersBtn = document.getElementById('apply-filters');
+  const resetFiltersBtn = document.getElementById('reset-filters');
+
+  if (applyFiltersBtn) {
+    applyFiltersBtn.addEventListener('click', () => this.applyFilters());
   }
+  if (resetFiltersBtn) {
+    resetFiltersBtn.addEventListener('click', () => this.resetFilters());
+  }
+
+  const dateFromInput = document.getElementById('date-from');
+  const dateToInput = document.getElementById('date-to');
+
+  if (dateFromInput && dateToInput) {
+    const debouncedFilterUpdate = debounce(() => this.applyFilters(), 1000);
+    dateFromInput.addEventListener('change', debouncedFilterUpdate);
+    dateToInput.addEventListener('change', debouncedFilterUpdate);
+  }
+
+  const refreshBtn = document.getElementById('refresh-btn');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => this.refreshData());
+
+  const exportBtn = document.getElementById('export-btn');
+  if (exportBtn) exportBtn.addEventListener('click', () => this.exportCurrentData());
+
+  const errorCloseBtn = document.getElementById('error-close');
+  if (errorCloseBtn) errorCloseBtn.addEventListener('click', hideError);
+
+  window.addEventListener('popstate', (e) => {
+    const page = e.state?.page || 'inbound';
+    this.navigateToPage(page, false);
+  });
+
+  let resizeTimeout;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      chartManager.resizeAllCharts();
+    }, 250);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+      e.preventDefault();
+      this.refreshData();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+      e.preventDefault();
+      this.exportCurrentData();
+    }
+  });
+
+  // Chart action buttons (expand and download)
+  document.addEventListener('click', (e) => {
+    if (e.target.matches('.chart-action[data-action="fullscreen"]') || 
+        e.target.closest('.chart-action[data-action="fullscreen"]')) {
+      const chartCard = e.target.closest('.chart-card');
+      this.toggleChartFullscreen(chartCard);
+    }
+    
+    if (e.target.matches('.chart-action[data-action="download"]') || 
+        e.target.closest('.chart-action[data-action="download"]')) {
+      const chartCard = e.target.closest('.chart-card');
+      this.downloadChart(chartCard);
+    }
+  });
+
+  // CSV download buttons in page headers
+  document.addEventListener('click', (e) => {
+    if (e.target.matches('.page-actions .btn-secondary') || 
+        e.target.closest('.page-actions .btn-secondary')) {
+      this.exportCurrentData();
+    }
+  });
+}
 
   /**
    * Navigate to a specific page
@@ -291,6 +314,65 @@ class Dashboard {
     const filename = `${this.currentPage}_data_${timestamp}.csv`;
 
     exportToCsv(data, filename);
+  }
+
+  toggleChartFullscreen(chartCard) {
+    if (!chartCard) return;
+    
+    if (chartCard.classList.contains('fullscreen')) {
+      // Exit fullscreen
+      chartCard.classList.remove('fullscreen');
+      document.body.style.overflow = '';
+      
+      // Update button icon
+      const btn = chartCard.querySelector('[data-action="fullscreen"] span');
+      if (btn) btn.textContent = '⛶';
+    } else {
+      // Enter fullscreen
+      chartCard.classList.add('fullscreen');
+      document.body.style.overflow = 'hidden';
+      
+      // Update button icon
+      const btn = chartCard.querySelector('[data-action="fullscreen"] span');
+      if (btn) btn.textContent = '✕';
+      
+      // Resize chart after animation
+      setTimeout(() => {
+        chartManager.resizeAllCharts();
+      }, 300);
+    }
+    
+    // Handle escape key
+    const escHandler = (e) => {
+      if (e.key === 'Escape' && chartCard.classList.contains('fullscreen')) {
+        this.toggleChartFullscreen(chartCard);
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+  }
+
+  downloadChart(chartCard) {
+    if (!chartCard) return;
+    
+    const canvas = chartCard.querySelector('canvas');
+    const title = chartCard.querySelector('.chart-title')?.textContent || 'chart';
+    
+    if (!canvas) {
+      showError('Chart not found for download');
+      return;
+    }
+    
+    try {
+      // Create download link
+      const link = document.createElement('a');
+      link.download = `${title.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (error) {
+      console.error('Chart download failed:', error);
+      showError('Failed to download chart');
+    }
   }
 
   setupAutoRefresh() {

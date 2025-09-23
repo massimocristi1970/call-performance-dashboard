@@ -727,3 +727,58 @@ body {
   clip: rect(0, 0, 0, 0);
   border: 0;
 }
+
+/* Fullscreen Chart Styles */
+.chart-card.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  background: var(--surface-color);
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-card.fullscreen .chart-container {
+  flex: 1;
+  padding: var(--space-xl);
+  min-height: auto;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-card.fullscreen .chart-canvas {
+  max-width: 90vw;
+  max-height: 80vh;
+  width: auto;
+  height: auto;
+}
+
+.chart-card.fullscreen .chart-header {
+  flex-shrink: 0;
+  border-bottom: 2px solid var(--border-color);
+  background: var(--background-color);
+}
+
+/* Animation for fullscreen transition */
+.chart-card {
+  transition: all 0.3s ease-in-out;
+}
+
+/* Ensure fullscreen overlay */
+.chart-card.fullscreen::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.1);
+  z-index: -1;
+}
