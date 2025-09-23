@@ -161,7 +161,7 @@ class DataLoader {
 		const pd = parseDate(r[dateField]);
 		if (pd) {
 		r.date_parsed = pd;
-		r.__chartDate = pf.getFullYear() + '-' + 
+		r.__chartDate = pd.getFullYear() + '-' + 
                 String(pd.getMonth() + 1).padStart(2, '0') + '-' + 
                 String(pd.getDate()).padStart(2, '0');
 		}
