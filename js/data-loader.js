@@ -139,7 +139,9 @@ class DataLoader {
 		  return null; // This will filter out the record
 		  }
         r.date_parsed = dt;
-        r.__chartDate = dt.toISOString().split('T')[0];
+        r.__chartDate = dt.getFullYear() + '-' + 
+                String(dt.getMonth() + 1).padStart(2, '0') + '-' + 
+                String(dt.getDate()).padStart(2, '0');
       }
 
       r.Count_numeric = cleanNumber(r.Count);
@@ -159,7 +161,9 @@ class DataLoader {
 		const pd = parseDate(r[dateField]);
 		if (pd) {
 		r.date_parsed = pd;
-		r.__chartDate = pd.toISOString().split('T')[0];
+		r.__chartDate = dt.getFullYear() + '-' + 
+                String(dt.getMonth() + 1).padStart(2, '0') + '-' + 
+                String(dt.getDate()).padStart(2, '0');
 		}
 	}
 
@@ -187,7 +191,9 @@ class DataLoader {
         const pd = parseDate(r.Date);
         if (pd) {
           r.date_parsed = pd;
-          r.__chartDate = pd.toISOString().split('T')[0];
+          r.__chartDate = dt.getFullYear() + '-' + 
+                String(dt.getMonth() + 1).padStart(2, '0') + '-' + 
+                String(dt.getDate()).padStart(2, '0');
         }
       }
 
