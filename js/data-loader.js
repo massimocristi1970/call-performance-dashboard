@@ -261,17 +261,20 @@ class DataLoader {
 
 
   filterByDateRange(key, startDate, endDate) {
-    const data = this.data[key] || [];
-    if (!startDate || !endDate) return data;
-    const s = parseDate(startDate);
-    const e = parseDate(endDate);
-    if (!s || !e) return data;
+	const data = this.data[key] || [];
+	if (!startDate || !endDate) return data;
+  
+	// Use simple Date constructor instead of parseDate
+	const s = new Date(startDate + 'T00:00:00');
+	const e = new Date(endDate + 'T23:59:59');
+  
+	if (isNaN(s.getTime()) || isNaN(e.getTime())) return data;
 
-    const eod = new Date(e);
-    eod.setHours(23, 59, 59, 999);
-
-    return data.filter(r => r.date_parsed && r.date_parsed >= s && r.date_parsed <= eod);
-  }
+	return data.filter(r => {
+		if (!r.date_parsed) return false;
+		return r.date_parsed >= s && r.date_parsed <= e;
+	});
+	}
 
   getData(key, filters = {}) {
   let data = this.data[key] || [];
