@@ -187,20 +187,20 @@ class PageRenderer {
     const idC = `${pageKey}-agent`;
     grid.appendChild(this.chartWrap('Top Agents', idC));
     chartManager.createAgentChart(idC, data, getFieldMapping(pageKey,'agent')[0] || 'Agent Name');
-    
-	// Add this after the existing inbound charts (after idC agent chart)
-	const idD = `${pageKey}-calls-per-hour-agent`;
-	grid.appendChild(this.chartWrap('Average Calls Per Hour by Agent', idD));
 
-	// Calculate calls per hour by agent
-	const callsPerHourByAgent = {};
-	data.forEach(r => {
-	  const agent = r['Agent Name'] || 'Unknown';
-	  if (!callsPerHourByAgent[agent]) {
-      callsPerHourByAgent[agent] = { calls: 0, hours: new Set() };
+    // Add this BEFORE the closing brace
+    const idD = `${pageKey}-calls-per-hour-agent`;
+    grid.appendChild(this.chartWrap('Average Calls Per Hour by Agent', idD));
+
+    // Calculate calls per hour by agent
+    const callsPerHourByAgent = {};
+    data.forEach(r => {
+      const agent = r['Agent Name'] || 'Unknown';
+      if (!callsPerHourByAgent[agent]) {
+        callsPerHourByAgent[agent] = { calls: 0, hours: new Set() };
       }
       callsPerHourByAgent[agent].calls += 1;
-  
+
       // Extract hour from date
       if (r.date_parsed) {
         const hour = r.date_parsed.getHours();
@@ -228,8 +228,8 @@ class PageRenderer {
       label: 'Avg Calls/Hour',
       multiColor: true
     });
-	
-	}
+
+    } // <- This closing brace should be AFTER all the inbound code
 
   calculateKPIs(pageKey, data) {
     const out = {};
