@@ -259,8 +259,9 @@ class PageRenderer {
     }
 
     if (pageKey === 'fcr') {
-      const totalCases = data.reduce((s, r) => s + cleanNumber(r.Count_numeric), 0);
-      out.totalCases = totalCases;
+	  const fcrData = dataLoader.getData('fcr', this.currentFilters);
+	  const totalCases = fcrData.reduce((s, r) => s + cleanNumber(r.Count_numeric), 0);
+	  out.totalCases = totalCases;
 
       try {
         const inboundData = dataLoader.getData('inbound', this.currentFilters);
