@@ -274,13 +274,13 @@ class DataLoader {
   }
 
   getData(key, filters = {}) {
-    let data = this.data[key] || [];
-    if (filters.startDate && filters.endDate) {
-      const filtered = this.filterByDateRange(key, filters.startDate, filters.endDate);
-      if (filtered.length > 0 || key === 'inbound') data = filtered;
-    }
-    return data;
+  let data = this.data[key] || [];
+  if (filters.startDate && filters.endDate) {
+    const filtered = this.filterByDateRange(key, filters.startDate, filters.endDate);
+    data = filtered;
   }
+  return data;
+}
 
   getMetadata(key) {
     return this.metadata[key] || {};
