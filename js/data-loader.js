@@ -133,11 +133,11 @@ class DataLoader {
       if (year > 1900) {
         let dt;
         if (!isNaN(month) && month >= 1 && !isNaN(day) && day >= 1) {
-          dt = new Date(year, month - 1, day);
-        } else {
-          // fallback for "Total" or missing values
-          dt = new Date(year, 0, 1);
-        }
+		  dt = new Date(year, month - 1, day);
+		} else {
+		  // Skip "Total" records entirely - don't assign a date
+		  return null; // This will filter out the record
+		  }
         r.date_parsed = dt;
         r.__chartDate = dt.toISOString().split('T')[0];
       }
