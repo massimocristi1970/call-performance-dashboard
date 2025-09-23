@@ -187,8 +187,7 @@ class PageRenderer {
     const idC = `${pageKey}-agent`;
     grid.appendChild(this.chartWrap('Top Agents', idC));
     chartManager.createAgentChart(idC, data, getFieldMapping(pageKey,'agent')[0] || 'Agent Name');
-  }
-  
+    
 	// Add this after the existing inbound charts (after idC agent chart)
 	const idD = `${pageKey}-calls-per-hour-agent`;
 	grid.appendChild(this.chartWrap('Average Calls Per Hour by Agent', idD));
@@ -229,6 +228,8 @@ class PageRenderer {
       label: 'Avg Calls/Hour',
       multiColor: true
     });
+	
+	}
 
   calculateKPIs(pageKey, data) {
     const out = {};
