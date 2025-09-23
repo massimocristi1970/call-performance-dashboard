@@ -131,8 +131,8 @@ class PageRenderer {
     }
 	
 	// Add this after the existing outbound charts (after idC agent chart)
-    const idD = `${pageKey}-calls-per-hour-agent`;
-    grid.appendChild(this.chartWrap('Average Outbound Calls Per Hour by Agent', idD));
+    const idE = `${pageKey}-calls-per-hour-agent`;
+    grid.appendChild(this.chartWrap('Average Outbound Calls Per Hour by Agent', idE));
 
     // Calculate outbound calls per hour by agent using outbound_calls data
     const outboundCallsPerHourByAgent = {};
