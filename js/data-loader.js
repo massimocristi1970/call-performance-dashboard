@@ -1,4 +1,5 @@
 // js/data-loader.js
+
 import { CONFIG, getFieldMapping } from './config.js';
 import {
   showError,
@@ -11,6 +12,9 @@ import {
   cleanNumber,
   isConnectedCall
 } from './utils.js';
+import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+dayjs.extend(customParseFormat);
 
 function isBlank(val) {
   return val == null || String(val).trim() === '';
@@ -128,75 +132,69 @@ class DataLoader {
     if (sourceKey === 'fcr') {
       const year = cleanNumber(r.Year);
       const month = cleanNumber(r.Month);
-	  const day = cleanNumber(r.Date);
+      const day = cleanNumber(r.Date);
 
-      if (year > 1900) {
-        let dt;
-        if (!isNaN(month) && month >= 1 && !isNaN(day) && day >= 1) {
-		  dt = new Date(year, month - 1, day);
-		} else {
-		  // Skip "Total" records entirely - don't assign a date
-		  return null; // This will filter out the record
-		  }
-        r.date_parsed = dt;
-        r.__chartDate = dt.toISOString().split('T')[0];
+      if (isNaN(year) || isNaN(month) || isNaN(day) || year < 1900 || month < 1 || day < 1) {
+        return null;
       }
-
+      const dt = new Date(year, month - 1, day);
+      if (isNaN(dt.getTime())) {
+        return null;
+      }
+      r.date_parsed = dt;
+      r.__chartDate = dt.toISOString().split('T')[0];
       r.Count_numeric = cleanNumber(r.Count);
     }
 
-	// ----- OUTBOUND_CONNECTRATE -----
-	if (sourceKey === 'outbound_connectrate') {
-	// Only process outbound calls - skip others
-	const direction = r['Initial Direction'] || r['Direction'];
-	if (!direction || direction.toLowerCase() !== 'outbound') {
-		return null; // This will be filtered out in processData
-	}
+    // ----- OUTBOUND_CONNECTRATE -----
+    if (sourceKey === 'outbound_connectrate') {
+      const direction = r['Initial Direction'] || r['Direction'];
+      if (!direction || direction.toLowerCase() !== 'outbound') {
+        return null;
+      }
 
-	// Parse date from Date/Time (earliest)
-	const dateField = this.findBestMatch(Object.keys(r), map.date || ['Date/Time (earliest)', 'Date/Time', 'Date']);
-	if (dateField && r[dateField]) {
-		const pd = parseDate(r[dateField]);
-		if (pd) {
-		r.date_parsed = pd;
-		r.__chartDate = pd.toISOString().split('T')[0];
-		}
-	}
-
-	// Check if call was connected (duration > 2:30)
-	const durationField = this.findBestMatch(Object.keys(r), map.duration || ['Duration', 'Call Duration']);
-	if (durationField && r[durationField]) {
-		r.isConnected = isConnectedCall(r[durationField]);
-		r.duration_numeric = cleanNumber(r[durationField]); // For potential future use
-	} else {
-		r.isConnected = false;
-	}
-
-	console.log(`Processed outbound_connectrate row:`, {
-		callId: r['Call ID'],
-		date: r.__chartDate,
-		direction: direction,
-		duration: r[durationField],
-		isConnected: r.isConnected
-	});
-	}
-
-    // ----- OUTBOUND -----
-    if (sourceKey === 'outbound') {
-      if (r.Date) {
-        const pd = parseDate(r.Date);
+      const dateField = this.findBestMatch(Object.keys(r), map.date || ['Date/Time (earliest)', 'Date/Time', 'Date']);
+      if (dateField && r[dateField]) {
+        const pd = parseDate(r[dateField]);
         if (pd) {
           r.date_parsed = pd;
           r.__chartDate = pd.toISOString().split('T')[0];
         }
       }
 
-      r.TotalCalls_numeric     = cleanNumber(r['Total Calls']);
-      r.AnsweredCalls_numeric  = cleanNumber(r['Answered Calls']);
-      r.MissedCalls_numeric    = cleanNumber(r['Missed Calls']);
+      const durationField = this.findBestMatch(Object.keys(r), map.duration || ['Duration', 'Call Duration']);
+      if (durationField && r[durationField]) {
+        r.isConnected = isConnectedCall(r[durationField]);
+        r.duration_numeric = cleanNumber(r[durationField]);
+      } else {
+        r.isConnected = false;
+      }
+
+      console.log(`Processed outbound_connectrate row:`, {
+        callId: r['Call ID'],
+        date: r.__chartDate,
+        direction: direction,
+        duration: r[durationField],
+        isConnected: r.isConnected
+      });
+    }
+
+    // ----- OUTBOUND -----
+    if (sourceKey === 'outbound') {
+      if (r.Date) {
+        const pd = this.parseDateRobust(r.Date);
+        if (pd) {
+          r.date_parsed = pd;
+          r.__chartDate = pd.toISOString().split('T')[0];
+        }
+      }
+
+      r.TotalCalls_numeric = cleanNumber(r['Total Calls']);
+      r.AnsweredCalls_numeric = cleanNumber(r['Answered Calls']);
+      r.MissedCalls_numeric = cleanNumber(r['Missed Calls']);
       r.VoicemailCalls_numeric = cleanNumber(r['Voicemail Calls']);
       r.TotalCallDuration_numeric = cleanNumber(r['Total Call Duration']);
-	  r.OutboundCalls_numeric = cleanNumber(r['Outbound Calls']);
+      r.OutboundCalls_numeric = cleanNumber(r['Outbound Calls']);
     }
 
     // ----- INBOUND -----
@@ -217,8 +215,8 @@ class DataLoader {
     }
 
     console.log(`Processed ${sourceKey} row:`, r);
-	return r;
-	}
+    return r;
+  }
 
   findBestMatch(headers, candidates) {
     const norm = headers.map((h) => ({ orig: h, norm: normalizeHeader(h) }));
@@ -230,34 +228,41 @@ class DataLoader {
     return null;
   }
 
+  parseDateRobust(dateString) {
+    if (!dateString) return null;
+    const formats = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD', 'MM-DD-YYYY'];
+    for (const format of formats) {
+      const parsedDate = dayjs(dateString, format, true);
+      if (parsedDate.isValid()) {
+        return parsedDate.toDate();
+      }
+    }
+    return null;
+  }
+
   isValidRow(row, key) {
-	// Handle null rows (filtered out in processRow)
-	if (row === null) return false;
-  
-	// Reject rows that are entirely blank
-	if (Object.values(row).every(v => isBlank(v))) return false;
+    if (row === null) return false;
 
-	if (key === 'outbound') {
-		// ✅ Only require Agent
-		return !isBlank(row.Agent);
-	}
+    if (Object.values(row).every(v => isBlank(v))) return false;
 
-	if (key === 'fcr') {
-		return !isBlank(row.Year); // only require Year
-	}
+    if (key === 'outbound') {
+      return !isBlank(row.Agent);
+    }
 
-	if (key === 'outbound_connectrate') {
-		// Require Call ID - row won't be null here since we already filtered above
-		return !isBlank(row['Call ID']);
-	}
+    if (key === 'fcr') {
+      return !isBlank(row.Year);
+    }
 
-	if (key === 'inbound') {
-		// Unchanged: require Call ID
-		return !isBlank(row['Call ID']);
-	}
+    if (key === 'outbound_connectrate') {
+      return !isBlank(row['Call ID']);
+    }
 
-	return true;
-   }
+    if (key === 'inbound') {
+      return !isBlank(row['Call ID']);
+    }
+
+    return true;
+  }
 
 
   filterByDateRange(key, startDate, endDate) {
@@ -274,13 +279,13 @@ class DataLoader {
   }
 
   getData(key, filters = {}) {
-  let data = this.data[key] || [];
-  if (filters.startDate && filters.endDate) {
-    const filtered = this.filterByDateRange(key, filters.startDate, filters.endDate);
-    data = filtered;
+    let data = this.data[key] || [];
+    if (filters.startDate && filters.endDate) {
+      const filtered = this.filterByDateRange(key, filters.startDate, filters.endDate);
+      data = filtered;
+    }
+    return data;
   }
-  return data;
-}
 
   getMetadata(key) {
     return this.metadata[key] || {};
